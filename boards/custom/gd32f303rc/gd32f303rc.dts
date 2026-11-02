@@ -1,0 +1,41 @@
+/dts-v1/;
+#include <gd/gd32f30x/gd32f303.dtsi>
+#include <dt-bindings/pinctrl/gd32f303r(b)xx-pinctrl.h>
+
+/ {
+	model = "Custom GD32F303RCT6";
+	compatible = "custom,gd32f303rc";
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,flash-controller = &fmc;
+		zephyr,console = &usart1;
+		zephyr,shell-uart = &usart1;
+	};
+	leds {
+		compatible = "gpio-leds";
+		user_led: led0 {
+			gpios = <&gpiob 15 GPIO_ACTIVE_HIGH>;
+			label = "PB15 LED";
+		};
+	};
+	aliases { led0 = &user_led; };
+};
+
+&flash0 { reg = <0x08000000 DT_SIZE_K(256)>; };
+&sram0 { reg = <0x20000000 DT_SIZE_K(48)>; };
+&gpioa { status = "okay"; };
+&gpiob { status = "okay"; };
+&pinctrl {
+	usart1_default: usart1_default {
+		group1 {
+			pinmux = <USART1_TX_PA2_NORMP>, <USART1_RX_PA3_NORMP>;
+		};
+	};
+};
+&usart1 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&usart1_default>;
+	pinctrl-names = "default";
+};

@@ -1,0 +1,2 @@
+config BOARD_GD32F303RC
+	select SOC_GD32F303

@@ -1,0 +1,23 @@
+# Reproducible GD32F303 bring-up dependencies. Add modules when enabling new features.
+manifest:
+  version: "0.13"
+  projects:
+    - name: zephyr
+      url: https://github.com/GD32-MCU-IOT/gd32_zephyr.git
+      revision: 178569928dbd3d4b9a126ec3f0f1e6828c247235
+      path: gd32_zephyr-main
+      west-commands: scripts/west-commands.yml
+    - name: cmsis
+      url: https://github.com/zephyrproject-rtos/cmsis
+      revision: 512cc7e895e8491696b61f7ba8066b4a182569b8
+      path: modules/hal/cmsis
+    - name: cmsis_6
+      url: https://github.com/zephyrproject-rtos/CMSIS_6
+      revision: b2dfbe1a20bbd49c2d2c605073799671074bbb30
+      path: modules/hal/cmsis_6
+    - name: hal_gigadevice
+      url: https://github.com/GD32-MCU-IOT/hal_gigadevice_zephyr.git
+      revision: 697bcf7e658b6ed7f9c678fbd975d061f34e7b0a
+      path: modules/hal/gigadevice
+  self:
+    path: firmware

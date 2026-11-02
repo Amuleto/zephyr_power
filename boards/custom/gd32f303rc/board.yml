@@ -1,0 +1,6 @@
+board:
+  name: gd32f303rc
+  full_name: Custom GD32F303RCT6
+  vendor: others
+  socs:
+    - name: gd32f303
