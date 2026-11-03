@@ -3,3 +3,12 @@ __pycache__/
 .venv/
 .cache/
 build/
+build-*/
+*.log
+*.elf
+*.hex
+*.bin
+*.zip
+*.7z
+.vscode/
+.idea/

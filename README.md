@@ -14,8 +14,16 @@
 
 运行 `build-gd32.cmd`，无需手动激活环境。默认工具位于 D:\build，SDK 为 1.0.1，Python 为 3.12.10。产物位于工作区 `build/bringup_gd32f303rc/zephyr/`。
 
+脚本通过 `env.cmd` 设置环境，可用 `ZEPHYR_TOOLS_ROOT` 覆盖工具根目录，或分别设置 `VIRTUAL_ENV` 和 `ZEPHYR_SDK_INSTALL_DIR`。CMake、Ninja、gperf、DTC 若采用其他目录布局，请提前加入 PATH。
+
 ## 从仓库恢复工作区
 
 将本仓库克隆为一个空工作区下的 `firmware`，在工作区运行 `west init -l firmware`、`west update`，再在 Python 3.12 环境安装 `gd32_zephyr-main/scripts/requirements-base.txt`。安装 SDK 和工具后执行构建脚本。
 
 此目录的 `west.yml` 是工作区依赖入口；更新依赖时先调整提交、编译和验证，再提交 manifest。无需修改厂商源码里的 west.yml。
+
+## 上传 GitHub
+
+只上传本 `firmware` Git 仓库。Zephyr、modules、构建产物和 archives 位于工作区外层，不属于本仓库。仓库不包含 SDK 或 Python 环境，使用者需自行安装。
+
+仓库尚未选择开源许可证；公开源码不等于授予开源使用许可。发布前请按自己的授权意愿补充 LICENSE。

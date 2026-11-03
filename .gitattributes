@@ -1,0 +1,6 @@
+* text=auto
+*.cmd text eol=crlf
+*.c text eol=lf
+*.dts text eol=lf
+*.yml text eol=lf
+*.md text eol=lf

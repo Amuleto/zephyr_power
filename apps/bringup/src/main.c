@@ -15,7 +15,7 @@ int main(void)
 		printk("LED configuration failed: %d\n", err);
 		return 0;
 	}
-	printk("GD32F303RCT6: USART1 PA2/PA3, PB15 LED\n");
+	printk("Board %s: LED blink demo\n", CONFIG_BOARD);
 	bool on = false;
 	for (;;) {
 		on = !on;
