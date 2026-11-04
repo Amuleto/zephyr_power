@@ -3,9 +3,9 @@ manifest:
   version: "0.13"
   projects:
     - name: zephyr
-      url: https://github.com/GD32-MCU-IOT/gd32_zephyr.git
-      revision: 178569928dbd3d4b9a126ec3f0f1e6828c247235
-      path: gd32_zephyr-main
+      url: https://github.com/amuleto/gd32_zephyr.git
+      revision: c640e0cd3a50f3627820d619cabc1c50ac806895
+      path: gd32_zephyr
       west-commands: scripts/west-commands.yml
     - name: cmsis
       url: https://github.com/zephyrproject-rtos/cmsis

@@ -1,0 +1,3 @@
+mainmenu "Board bring-up"
+
+source "Kconfig.zephyr"

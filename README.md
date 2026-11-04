@@ -12,13 +12,22 @@
 
 ## Windows 构建
 
+本机已将 west 和构建工具加入用户 PATH，并在 .west/config 中设置默认板子、BOARD_ROOT 和构建目录。新开的终端进入工作区后执行：
+
+```text
+west build   编译
+west flash   自动检查/重新编译后烧录
+```
+
+本地 west 默认设置不在本 Git 仓库中，换电脑或移动工作区后需要重新配置。若删除整个 build，首次运行 `west build firmware/apps/bringup`（从工作区根目录）；生成缓存后继续使用 `west build`。首次配置也可用下方原有构建脚本。
+
 运行 `build-gd32.cmd`，无需手动激活环境。默认工具位于 D:\build，SDK 为 1.0.1，Python 为 3.12.10。产物位于工作区 `build/bringup_gd32f303rc/zephyr/`。
 
 脚本通过 `env.cmd` 设置环境，可用 `ZEPHYR_TOOLS_ROOT` 覆盖工具根目录，或分别设置 `VIRTUAL_ENV` 和 `ZEPHYR_SDK_INSTALL_DIR`。CMake、Ninja、gperf、DTC 若采用其他目录布局，请提前加入 PATH。
 
 ## 从仓库恢复工作区
 
-将本仓库克隆为一个空工作区下的 `firmware`，在工作区运行 `west init -l firmware`、`west update`，再在 Python 3.12 环境安装 `gd32_zephyr-main/scripts/requirements-base.txt`。安装 SDK 和工具后执行构建脚本。
+将本仓库克隆为一个空工作区下的 `firmware`，在工作区运行 `west init -l firmware`、`west update`，再在 Python 3.12 环境安装 `gd32_zephyr/scripts/requirements-base.txt`。安装 SDK 和工具后执行构建脚本。
 
 此目录的 `west.yml` 是工作区依赖入口；更新依赖时先调整提交、编译和验证，再提交 manifest。无需修改厂商源码里的 west.yml。
 

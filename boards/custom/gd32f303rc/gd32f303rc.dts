@@ -19,12 +19,21 @@
 			label = "PB12 LED";
 		};
 	};
-	aliases { led0 = &user_led; };
+	aliases {
+		led0 = &user_led;
+		rtc0 = &rtc;
+	};
 };
 
 &flash0 { reg = <0x08000000 DT_SIZE_K(256)>; };
 &sram0 { reg = <0x20000000 DT_SIZE_K(48)>; };
 &gpiob { status = "okay"; };
+&fwdgt { status = "okay"; };
+&rtc {
+	status = "okay";
+	clock-source = "hxtal-div128";
+	clock-frequency = <8000000>;
+};
 &gpioc { status = "okay"; };
 &gpiod { status = "okay"; };
 &pinctrl {
