@@ -1,0 +1,16 @@
+/ {
+	aliases {
+		factory-uart = &factory_uart;
+		rs485-uart = &rs485_uart;
+	};
+	factory_uart: factory_uart {
+		compatible = "zephyr,uart-emul";
+		status = "okay";
+		rx-fifo-size = <256>;
+	};
+	rs485_uart: rs485_uart {
+		compatible = "zephyr,uart-emul";
+		status = "okay";
+		rx-fifo-size = <256>;
+	};
+};

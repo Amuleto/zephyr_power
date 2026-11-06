@@ -49,3 +49,6 @@
 	pinctrl-0 = <&uart4_default>;
 	pinctrl-names = "default";
 };
+
+#include "partitions.dtsi"
+#include "precharge.dtsi"

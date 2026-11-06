@@ -2,6 +2,10 @@
 manifest:
   version: "0.13"
   projects:
+    - name: mcuboot
+      url: https://github.com/mcu-tools/mcuboot.git
+      revision: ee39e2d694bd827ffd1bebbce2f571a9154e6ec2
+      path: bootloader/mcuboot
     - name: zephyr
       url: https://github.com/amuleto/gd32_zephyr.git
       revision: c640e0cd3a50f3627820d619cabc1c50ac806895

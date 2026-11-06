@@ -1,0 +1,7 @@
+config APP_UART_RX_BUFFER_SIZE
+	int "Receive ring buffer size per business UART"
+	default 512
+	range 64 4096
+	help
+	  Size in bytes for each independent USART0 and USART2 receive ring.
+	  When full, new bytes are discarded and counted until space is available.

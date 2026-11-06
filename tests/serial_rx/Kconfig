@@ -1,0 +1,2 @@
+rsource "../../apps/bringup/Kconfig.serial_rx"
+source "Kconfig.zephyr"

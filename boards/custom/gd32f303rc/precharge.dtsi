@@ -1,0 +1,150 @@
+#include <zephyr/dt-bindings/adc/adc.h>
+
+/ {
+	aliases {
+		factory-uart = &usart0;
+		rs485-uart = &usart2;
+	};
+
+	zephyr,user {
+		/* CH1 before/after, CH2 before/after, CH3 before/after, CH4 before/after. */
+		io-channels = <&adc0 0>, <&adc0 1>, <&adc0 2>, <&adc0 3>,
+			      <&adc0 4>, <&adc0 5>, <&adc0 6>, <&adc0 7>, <&adc0 8>;
+		io-channel-names = "ch1-before", "ch1-after", "ch2-before", "ch2-after",
+				   "ch3-before", "ch3-after", "ch4-before", "ch4-after",
+				   "reference-3v";
+		relay-gpios = <&gpiob 6 GPIO_ACTIVE_HIGH>, <&gpiob 5 GPIO_ACTIVE_HIGH>,
+			      <&gpiob 4 GPIO_ACTIVE_HIGH>, <&gpiob 3 GPIO_ACTIVE_HIGH>;
+		/* PB12 is the verified LED on this board; PB8 requires physical rewiring. */
+		rs485-de-gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&gpioa {
+	status = "okay";
+};
+
+&pinctrl {
+	factory_uart_default: factory_uart_default {
+		tx {
+			pinmux = <USART0_TX_PA9_NORMP>;
+		};
+		rx {
+			pinmux = <USART0_RX_PA10_NORMP>;
+			bias-pull-up;
+		};
+	};
+
+	rs485_uart_default: rs485_uart_default {
+		tx {
+			pinmux = <USART2_TX_PB10_NORMP>;
+		};
+		rx {
+			pinmux = <USART2_RX_PB11_NORMP>;
+			bias-pull-up;
+		};
+	};
+
+	precharge_adc_default: precharge_adc_default {
+		group1 {
+			pinmux = <ANALOG_PA0>, <ANALOG_PA1>, <ANALOG_PA2>, <ANALOG_PA3>,
+				 <ANALOG_PA4>, <ANALOG_PA5>, <ANALOG_PA6>, <ANALOG_PA7>,
+				 <ANALOG_PB0>;
+		};
+	};
+};
+
+&usart0 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&factory_uart_default>;
+	pinctrl-names = "default";
+};
+
+&usart2 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&rs485_uart_default>;
+	pinctrl-names = "default";
+};
+
+&adc0 {
+	status = "okay";
+	pinctrl-0 = <&precharge_adc_default>;
+	pinctrl-names = "default";
+	vref-mv = <3300>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel@0 {
+		reg = <0>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 240)>;
+		zephyr,resolution = <12>;
+	};
+
+	channel@1 {
+		reg = <1>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 240)>;
+		zephyr,resolution = <12>;
+	};
+
+	channel@2 {
+		reg = <2>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 240)>;
+		zephyr,resolution = <12>;
+	};
+
+	channel@3 {
+		reg = <3>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 240)>;
+		zephyr,resolution = <12>;
+	};
+
+	channel@4 {
+		reg = <4>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 240)>;
+		zephyr,resolution = <12>;
+	};
+
+	channel@5 {
+		reg = <5>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 240)>;
+		zephyr,resolution = <12>;
+	};
+
+	channel@6 {
+		reg = <6>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 240)>;
+		zephyr,resolution = <12>;
+	};
+
+	channel@7 {
+		reg = <7>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 240)>;
+		zephyr,resolution = <12>;
+	};
+
+	channel@8 {
+		reg = <8>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 240)>;
+		zephyr,resolution = <12>;
+	};
+};

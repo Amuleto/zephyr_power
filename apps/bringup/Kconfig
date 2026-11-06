@@ -1,3 +1,5 @@
 mainmenu "Board bring-up"
 
+rsource "Kconfig.serial_rx"
+
 source "Kconfig.zephyr"

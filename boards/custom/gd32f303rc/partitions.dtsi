@@ -1,0 +1,37 @@
+/ {
+	chosen {
+		zephyr,code-partition = &slot0_partition;
+		zephyr,settings-partition = &storage_partition;
+	};
+};
+
+&flash0 {
+	/* This board uses only bank 0: uniform 2 KiB erase pages. */
+	erase-block-size = <2048>;
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		boot_partition: partition@0 {
+			label = "mcuboot";
+			reg = <0x00000 0x08000>;
+		};
+		slot0_partition: partition@8000 {
+			label = "image-0";
+			reg = <0x08000 0x19000>;
+		};
+		slot1_partition: partition@21000 {
+			label = "image-1";
+			reg = <0x21000 0x19800>;
+		};
+		storage_partition: partition@3a800 {
+			label = "storage";
+			reg = <0x3a800 0x02000>;
+		};
+		data_partition: partition@3c800 {
+			label = "data";
+			reg = <0x3c800 0x03800>;
+		};
+	};
+};
