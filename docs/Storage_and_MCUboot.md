@@ -47,7 +47,7 @@ west build --sysbuild -b gd32f303rc firmware/apps/bringup -d build/bringup_gd32f
 
 ## 参数接口
 
-`apps/bringup/src/params.c` 使用 Settings + NVS，参数分区为 4 个 2 KiB 扇区，启用 NVS 数据 CRC。NVS 需保留空间用于垃圾回收，因此 8 KiB 分区不等于 8 KiB 净参数容量。
+`apps/bringup/params.c` 使用 Settings + NVS，参数分区为 4 个 2 KiB 扇区，启用 NVS 数据 CRC。NVS 需保留空间用于垃圾回收，因此 8 KiB 分区不等于 8 KiB 净参数容量。
 
 首个示例参数为 `app/device_id`，默认值 1，可取完整 uint32_t 范围。以固定 4 字节小端形式持久化，避免直接保存结构体带来的填充与版本问题。
 

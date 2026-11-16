@@ -15,4 +15,4 @@ west build --no-sysbuild -d build/test_serial_rx -t run
 
 看到 `pass = 5, fail = 0` 和 `PROJECT EXECUTION SUCCESSFUL` 表示测试完成。若 QEMU 未退出，使用 Ctrl+A、X 退出控制台。本次自动验证使用无窗口 QEMU，捕获完成结果后终止模拟器。
 
-测试使用两个 zephyr,uart-emul 节点替代实际串口，执行的接收模块仍为 apps/bringup/src/serial_rx.c。没有连接或操作 GD32 实板。
+测试使用两个 zephyr,uart-emul 节点替代实际串口，执行的接收模块为 `bsp/serial_rx.c`。

@@ -4,7 +4,7 @@
 
 * [业务串口接收缓冲](Serial_RX.md)：独立环形缓冲、读取接口、溢出策略及模拟测试。
 
-* [预充检测板硬件配置](Precharge_Hardware.md)：原理图引脚、PB12/PB8 实板调整、ADC 和串口配置及验证范围。
+* [预充检测板硬件配置](Precharge_Hardware.md)：原理图引脚、GPIO 命令、ADC 和串口配置及验证范围。
 
 * [MCUboot 分区与参数存储](Storage_and_MCUboot.md)：Flash 布局、签名构建、参数命令和验证步骤。
 

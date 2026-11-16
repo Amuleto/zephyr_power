@@ -15,8 +15,10 @@
 				   "reference-3v";
 		relay-gpios = <&gpiob 6 GPIO_ACTIVE_HIGH>, <&gpiob 5 GPIO_ACTIVE_HIGH>,
 			      <&gpiob 4 GPIO_ACTIVE_HIGH>, <&gpiob 3 GPIO_ACTIVE_HIGH>;
-		/* PB12 is the verified LED on this board; PB8 requires physical rewiring. */
+		led-gpios = <&gpiob 7 GPIO_ACTIVE_HIGH>;
+		/* PB8 requires physical rewiring. */
 		rs485-de-gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>;
+		pe-gpios = <&gpiob 13 GPIO_ACTIVE_HIGH>;
 	};
 };
 

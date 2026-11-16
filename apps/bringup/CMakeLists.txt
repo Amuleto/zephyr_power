@@ -4,10 +4,14 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(gd32f303rc_bringup)
 
 target_sources(app PRIVATE
-  src/main.c
-  src/led.c
-  src/datetime.c
-  src/params.c
-  src/board_io.c
-  src/serial_rx.c
+  app.c
+  precharge/precharge.c
+  host_link/host_link.c
+  gpio_shell.c
+  precharge/mp10.c
+  datetime.c
+  params.c
 )
+
+add_subdirectory(../../bsp ${CMAKE_CURRENT_BINARY_DIR}/bsp)
+target_include_directories(app PRIVATE inc)

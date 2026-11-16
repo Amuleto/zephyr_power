@@ -16,8 +16,8 @@ def main():
         edt = pickle.load(source)
     user = edt.get_node("/zephyr,user")
     gpio_b = edt.label2node["gpiob"]
-    led = edt.get_node("led0").props["gpios"].val[0]
-    assert led.controller is gpio_b and led.data == {"pin": 12, "flags": 0}
+    led = user.props["led-gpios"].val[0]
+    assert led.controller is gpio_b and led.data == {"pin": 7, "flags": 0}
     relays = user.props["relay-gpios"].val
     assert all(item.controller is gpio_b and item.data["flags"] == 0 for item in relays)
     assert [item.data["pin"] for item in relays] == [6, 5, 4, 3]
@@ -35,7 +35,7 @@ def main():
         assert node.status == "okay" and node.props["current-speed"].val == 115200
     assert edt.chosen_nodes["zephyr,console"] is edt.label2node["uart4"]
     assert edt.chosen_nodes["zephyr,shell-uart"] is edt.label2node["uart4"]
-    print("PASS: PB12 LED, PB8 direction, four relays, nine ADC inputs and three UARTs")
+    print("PASS: PB7 LED, PB8 direction, four relays, nine ADC inputs and three UARTs")
 
 
 if __name__ == "__main__":

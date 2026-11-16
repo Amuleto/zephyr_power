@@ -11,16 +11,9 @@
 		zephyr,flash-controller = &fmc;
 		zephyr,console = &uart4;
 		zephyr,shell-uart = &uart4;
-	};
-	leds {
-		compatible = "gpio-leds";
-		user_led: led0 {
-			gpios = <&gpiob 12 GPIO_ACTIVE_HIGH>;
-			label = "PB12 LED";
-		};
+		zephyr,canbus = &can0;
 	};
 	aliases {
-		led0 = &user_led;
 		rtc0 = &rtc;
 	};
 };
@@ -37,11 +30,25 @@
 &gpioc { status = "okay"; };
 &gpiod { status = "okay"; };
 &pinctrl {
+	can0_default: can0_default {
+		group1 {
+			pinmux = <CAN0_RX_PA11_NORMP>, <CAN0_TX_PA12_NORMP>;
+		};
+	};
+
 	uart4_default: uart4_default {
 		group1 {
 			pinmux = <UART4_TX_PC12>, <UART4_RX_PD2>;
 		};
 	};
+};
+
+&can0 {
+	status = "okay";
+	pinctrl-0 = <&can0_default>;
+	pinctrl-names = "default";
+	bitrate = <500000>;
+	sample-point = <875>;
 };
 &uart4 {
 	status = "okay";

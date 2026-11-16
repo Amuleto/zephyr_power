@@ -25,7 +25,7 @@ serial read rs485
 
 ## 业务线程接口
 
-接口及参数、返回值约定见 `apps/bringup/src/serial_rx.h`。
+接口及参数、返回值约定见 `bsp/inc/serial_rx.h`。
 
 ```c
 uint8_t data[64];

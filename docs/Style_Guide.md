@@ -22,8 +22,8 @@ firmware 根目录的 [`.clang-format`](../.clang-format) 复制自当前 gd32_z
 在 firmware 根目录，可以对具体修改文件运行：
 
 ```sh
-clang-format --dry-run --Werror apps/bringup/src/main.c
-clang-format -i apps/bringup/src/main.c
+clang-format --dry-run --Werror bsp/main.c
+clang-format -i bsp/main.c
 ```
 
 `-i` 会修改文件，应检查差异后再提交。clang-format 不能代替人工审查，也不会检查所有命名、注释与接口文档要求。
