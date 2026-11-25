@@ -5,22 +5,31 @@
 
 #include "board_gpio.h"
 
+/** 板级输出引脚在设备树中的归属节点。 */
 #define BOARD_GPIO_USER_NODE DT_PATH(zephyr_user)
 
-static const struct gpio_dt_spec outputs[BOARD_GPIO_OUT_COUNT] =
-{
-    [BOARD_GPIO_OUT_JDQ1] = GPIO_DT_SPEC_GET_BY_IDX(BOARD_GPIO_USER_NODE, relay_gpios, 0),
-    [BOARD_GPIO_OUT_JDQ2] = GPIO_DT_SPEC_GET_BY_IDX(BOARD_GPIO_USER_NODE, relay_gpios, 1),
-    [BOARD_GPIO_OUT_JDQ3] = GPIO_DT_SPEC_GET_BY_IDX(BOARD_GPIO_USER_NODE, relay_gpios, 2),
-    [BOARD_GPIO_OUT_JDQ4] = GPIO_DT_SPEC_GET_BY_IDX(BOARD_GPIO_USER_NODE, relay_gpios, 3),
-    [BOARD_GPIO_OUT_LED] = GPIO_DT_SPEC_GET(BOARD_GPIO_USER_NODE, led_gpios),
-    [BOARD_GPIO_OUT_RS485_DE] = GPIO_DT_SPEC_GET(BOARD_GPIO_USER_NODE, rs485_de_gpios),
-    [BOARD_GPIO_OUT_PE] = GPIO_DT_SPEC_GET(BOARD_GPIO_USER_NODE, pe_gpios),
+static const struct gpio_dt_spec outputs[BOARD_GPIO_OUT_COUNT] = {
+        [BOARD_GPIO_OUT_JDQ1] = GPIO_DT_SPEC_GET_BY_IDX(BOARD_GPIO_USER_NODE, relay_gpios, 0),
+        [BOARD_GPIO_OUT_JDQ2] = GPIO_DT_SPEC_GET_BY_IDX(BOARD_GPIO_USER_NODE, relay_gpios, 1),
+        [BOARD_GPIO_OUT_JDQ3] = GPIO_DT_SPEC_GET_BY_IDX(BOARD_GPIO_USER_NODE, relay_gpios, 2),
+        [BOARD_GPIO_OUT_JDQ4] = GPIO_DT_SPEC_GET_BY_IDX(BOARD_GPIO_USER_NODE, relay_gpios, 3),
+        [BOARD_GPIO_OUT_LED] = GPIO_DT_SPEC_GET(BOARD_GPIO_USER_NODE, led_gpios),
+        [BOARD_GPIO_OUT_RS485_DE] = GPIO_DT_SPEC_GET(BOARD_GPIO_USER_NODE, rs485_de_gpios),
+        [BOARD_GPIO_OUT_PE] = GPIO_DT_SPEC_GET(BOARD_GPIO_USER_NODE, pe_gpios),
 };
 
 static K_MUTEX_DEFINE(board_lock);
 static bool board_ready;
 
+/**
+ ******************************************************************************
+ * @brief      初始化板级 GPIO 输出，默认置为非有效态。
+ * @retval     0:初始化成功。
+ * @retval     负值:GPIO 未就绪或配置失败。
+ *
+ * @details    在线程上下文中调用一次。
+ ******************************************************************************
+ */
 int app_board_gpio_init(void)
 {
     /* 继电器默认断开，LED 默认熄灭，RS485 默认接收，PE 默认低电平。 */
@@ -46,7 +55,7 @@ int app_board_gpio_init(void)
     return 0;
 }
 
-static int write_output(enum board_gpio_output_e output, bool value, bool raw)
+static int write_output(board_gpio_output_e output, bool value, bool raw)
 {
     const struct gpio_dt_spec *gpio;
     int err = -EAGAIN;
@@ -60,23 +69,61 @@ static int write_output(enum board_gpio_output_e output, bool value, bool raw)
     k_mutex_lock(&board_lock, K_FOREVER);
     if (board_ready)
     {
-        err = raw ? gpio_pin_set_raw(gpio->port, gpio->pin, value) : gpio_pin_set_dt(gpio, value);
+        if (raw)
+        {
+            err = gpio_pin_set_raw(gpio->port, gpio->pin, value);
+        }
+        else
+        {
+            err = gpio_pin_set_dt(gpio, value);
+        }
     }
     k_mutex_unlock(&board_lock);
     return err;
 }
 
-int app_board_gpio_write(enum board_gpio_output_e output, bool active)
+/**
+ ******************************************************************************
+ * @brief      按设备树定义的极性设置指定输出的逻辑状态。
+ * @param[in]  output:输出信号。
+ * @param[in]  active:true 表示有效，false 表示非有效。
+ * @retval     0:设置成功。
+ * @retval     -EINVAL:输出信号无效。
+ * @retval     -EAGAIN:GPIO 尚未初始化。
+ * @retval     其他负值:GPIO 驱动返回的错误码。
+ ******************************************************************************
+ */
+int app_board_gpio_write(board_gpio_output_e output, bool active)
 {
     return write_output(output, active, false);
 }
 
-int app_board_gpio_write_raw(enum board_gpio_output_e output, bool high)
+/**
+ ******************************************************************************
+ * @brief      设置指定输出的物理电平。
+ * @param[in]  output:输出信号。
+ * @param[in]  high:true 表示高电平，false 表示低电平。
+ * @retval     0:设置成功。
+ * @retval     -EINVAL:输出信号无效。
+ * @retval     -EAGAIN:GPIO 尚未初始化。
+ * @retval     其他负值:GPIO 驱动返回的错误码。
+ ******************************************************************************
+ */
+int app_board_gpio_write_raw(board_gpio_output_e output, bool high)
 {
     return write_output(output, high, true);
 }
 
-int app_board_gpio_find_pb(unsigned int pin, enum board_gpio_output_e *output)
+/**
+ ******************************************************************************
+ * @brief      查找映射到 GPIOB 指定引脚的输出信号。
+ * @param[in]  pin:GPIOB 引脚编号。
+ * @param[out] output:匹配时写入逻辑输出编号。
+ * @retval     0:找到输出。
+ * @retval     -EINVAL:输出指针为空或引脚未映射。
+ ******************************************************************************
+ */
+int app_board_gpio_find_pb(unsigned int pin, board_gpio_output_e *output)
 {
     if (output == NULL)
     {
@@ -87,7 +134,7 @@ int app_board_gpio_find_pb(unsigned int pin, enum board_gpio_output_e *output)
     {
         if (outputs[i].port == DEVICE_DT_GET(DT_NODELABEL(gpiob)) && outputs[i].pin == pin)
         {
-            *output = (enum board_gpio_output_e)i;
+            *output = (board_gpio_output_e)i;
             return 0;
         }
     }

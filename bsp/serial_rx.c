@@ -11,16 +11,19 @@
 
 #include "serial_rx.h"
 
-struct serial_rx_context {
+/** 每路串口的中断接收状态；线程只在短临界区内读取缓冲区和统计。 */
+typedef struct
+{
     const struct device *dev;
     struct ring_buf ring;
     struct k_spinlock lock;
     struct k_sem available;
-    struct app_serial_rx_stats stats;
+    app_serial_rx_stats_t stats;
     uint8_t storage[CONFIG_APP_UART_RX_BUFFER_SIZE];
-};
+} serial_rx_context_t;
 
-static struct serial_rx_context ports[APP_SERIAL_PORT_COUNT] = {
+static serial_rx_context_t ports[APP_SERIAL_PORT_COUNT] =
+{
     [APP_SERIAL_FACTORY] = {.dev = DEVICE_DT_GET(DT_ALIAS(factory_uart))},
     [APP_SERIAL_RS485] = {.dev = DEVICE_DT_GET(DT_ALIAS(rs485_uart))},
 };
@@ -31,16 +34,25 @@ BUILD_ASSERT(!DT_SAME_NODE(DT_ALIAS(factory_uart), DT_ALIAS(rs485_uart)));
 #if DT_HAS_CHOSEN(zephyr_shell_uart)
 BUILD_ASSERT(!DT_SAME_NODE(DT_ALIAS(factory_uart), DT_CHOSEN(zephyr_shell_uart)));
 BUILD_ASSERT(!DT_SAME_NODE(DT_ALIAS(rs485_uart), DT_CHOSEN(zephyr_shell_uart)));
-#endif
+#endif /* DT_HAS_CHOSEN(zephyr_shell_uart) */
 
-static bool port_valid(enum app_serial_port port)
+static bool port_valid(app_serial_port_e port)
 {
     return (unsigned int)port < APP_SERIAL_PORT_COUNT;
 }
 
+/**
+ ******************************************************************************
+ * @brief      排空 UART FIFO，将新字节存入环形缓冲并通知读取线程。
+ * @param[in]  dev:产生中断的串口设备。
+ * @param[in,out] user_data:本串口的接收上下文，由初始化函数注册。
+ * @retval     None
+ * @details    在中断上下文执行，不等待缓冲空间；缓冲区满时丢弃新字节并计数。
+ ******************************************************************************
+ */
 static void receive_irq(const struct device *dev, void *user_data)
 {
-    struct serial_rx_context *ctx = user_data;
+    serial_rx_context_t *ctx = user_data;
     uint8_t bytes[16];
     k_spinlock_key_t key;
     uint32_t stored;
@@ -83,6 +95,17 @@ static void receive_irq(const struct device *dev, void *user_data)
     }
 }
 
+/**
+ ******************************************************************************
+ * @brief      注册回调并启用两个业务串口的接收中断。
+ * @retval     0:初始化成功。
+ * @retval     -ENODEV:串口未就绪。
+ * @retval     -EALREADY:模块已初始化。
+ * @retval     其他负值:回调注册失败。
+ *
+ * @details    启动时在线程上下文调用一次，随后由本模块独占两路串口接收。
+ ******************************************************************************
+ */
 int app_serial_rx_init(void)
 {
     int attached = 0;
@@ -106,7 +129,7 @@ int app_serial_rx_init(void)
 
     for (size_t i = 0; i < ARRAY_SIZE(ports); i++)
     {
-        struct serial_rx_context *ctx = &ports[i];
+        serial_rx_context_t *ctx = &ports[i];
 
         uart_irq_rx_disable(ctx->dev);
         uart_irq_err_disable(ctx->dev);
@@ -132,7 +155,7 @@ int app_serial_rx_init(void)
 rollback:
     for (int i = 0; i < attached; i++)
     {
-        (void)uart_irq_callback_user_data_set(ports[i].dev, NULL, NULL);
+        uart_irq_callback_user_data_set(ports[i].dev, NULL, NULL);
     }
 
 out:
@@ -140,10 +163,28 @@ out:
     return err;
 }
 
-ssize_t app_serial_rx_read(enum app_serial_port port, uint8_t *buffer,
-               size_t length, k_timeout_t timeout)
+/**
+ ******************************************************************************
+ * @brief      读取业务串口当前可用的字节。
+ * @param[in]  port:业务串口编号。
+ * @param[out] buffer:容量至少为 length 字节的输出缓冲区。
+ * @param[in]  length:最大读取字节数，为零时 buffer 可为空。
+ * @param[in]  timeout:等待首字节的超时，支持 K_NO_WAIT 和 K_FOREVER。
+ * @retval     正值:实际读取的字节数。
+ * @retval     0:等待超时或请求长度为零。
+ * @retval     -EINVAL:端口、缓冲区或长度无效。
+ * @retval     -EAGAIN:模块尚未初始化。
+ * @retval     -EWOULDBLOCK:在中断上下文调用。
+ *
+ * @details    每个端口由一个线程读取。返回字节片段，组帧由调用方负责。
+ *             缓冲区满时丢弃新字节，调用方可通过统计检测数据中断。
+ *             调用方保有 buffer 所有权。
+ ******************************************************************************
+ */
+ssize_t app_serial_rx_read(app_serial_port_e port, uint8_t *buffer, size_t length,
+                           k_timeout_t timeout)
 {
-    struct serial_rx_context *ctx;
+    serial_rx_context_t *ctx;
     k_spinlock_key_t key;
     k_timepoint_t deadline;
     uint32_t count;
@@ -185,9 +226,19 @@ ssize_t app_serial_rx_read(enum app_serial_port port, uint8_t *buffer,
     }
 }
 
-int app_serial_rx_stats_get(enum app_serial_port port, struct app_serial_rx_stats *stats)
+/**
+ ******************************************************************************
+ * @brief      获取一致的串口接收统计快照。
+ * @param[in]  port:业务串口编号。
+ * @param[out] stats:有效的统计输出地址。
+ * @retval     0:复制成功。
+ * @retval     -EINVAL:端口或输出地址无效。
+ * @retval     -EAGAIN:模块尚未初始化。
+ ******************************************************************************
+ */
+int app_serial_rx_stats_get(app_serial_port_e port, app_serial_rx_stats_t *stats)
 {
-    struct serial_rx_context *ctx;
+    serial_rx_context_t *ctx;
     k_spinlock_key_t key;
 
     if (!port_valid(port) || stats == NULL)
@@ -211,9 +262,19 @@ int app_serial_rx_stats_get(enum app_serial_port port, struct app_serial_rx_stat
 #if defined(CONFIG_SHELL)
 static const char *const port_names[] = {"factory", "rs485"};
 
+/**
+ ******************************************************************************
+ * @brief      打印两路业务串口的接收缓存及丢包统计。
+ * @param[in]  sh:输出结果的 Shell 实例。
+ * @param[in]  argc:参数数量，由 Shell 校验。
+ * @param[in]  argv:命令参数，未使用。
+ * @retval     0:查询成功。
+ * @retval     负值:串口状态不可用。
+ ******************************************************************************
+ */
 static int cmd_serial_stats(const struct shell *sh, size_t argc, char **argv)
 {
-    struct app_serial_rx_stats stats;
+    app_serial_rx_stats_t stats;
     int err;
 
     ARG_UNUSED(argc);
@@ -227,12 +288,25 @@ static int cmd_serial_stats(const struct shell *sh, size_t argc, char **argv)
             return err;
         }
         shell_print(sh, "%s: pending=%u/%u received=%u dropped=%u errors=%u mask=0x%x",
-                port_names[i], stats.pending, stats.capacity, stats.received,
-                stats.dropped, stats.error_events, stats.error_mask);
+                    port_names[i], stats.pending, stats.capacity, stats.received, stats.dropped,
+                    stats.error_events, stats.error_mask);
     }
     return 0;
 }
 
+/**
+ ******************************************************************************
+ * @brief      非阻塞读取并显示产线串口已缓存的字节。
+ * @param[in]  sh:输出结果的 Shell 实例。
+ * @param[in]  argc:参数数量，由 Shell 校验。
+ * @param[in]  argv:第 1 项为端口名。
+ * @retval     0:读取成功或暂无数据。
+ * @retval     -EBUSY:RS485 已由主板通信线程独占。
+ * @retval     -EINVAL:端口名称无效。
+ * @retval     其他负值:串口读取失败。
+ * @details    最多消费 64 字节；正式产线任务使用该端口后需移除此调试入口。
+ ******************************************************************************
+ */
 static int cmd_serial_read(const struct shell *sh, size_t argc, char **argv)
 {
     uint8_t bytes[64];
@@ -273,10 +347,10 @@ static int cmd_serial_read(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_STATIC_SUBCMD_SET_CREATE(serial_commands,
     SHELL_CMD_ARG(stats, NULL, "Show RX occupancy, drops and hardware errors",
-              cmd_serial_stats, 1, 0),
+                  cmd_serial_stats, 1, 0),
     SHELL_CMD_ARG(read, NULL, "Consume up to 64 RX bytes: serial read <factory|rs485>",
-              cmd_serial_read, 2, 0),
+                  cmd_serial_read, 2, 0),
     SHELL_SUBCMD_SET_END
 );
 SHELL_CMD_REGISTER(serial, &serial_commands, "Business UART RX buffers", NULL);
-#endif
+#endif /* CONFIG_SHELL */

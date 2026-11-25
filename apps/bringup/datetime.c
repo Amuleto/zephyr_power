@@ -11,6 +11,26 @@ static K_MUTEX_DEFINE(clock_lock);
 
 /**
  ******************************************************************************
+ * @brief      打印本次启动后的运行时间。
+ * @param[in]  sh:输出结果的 Shell 实例。
+ * @param[in]  argc:参数数量，由 Shell 校验。
+ * @param[in]  argv:命令参数，未使用。
+ * @retval     0:查询成功。
+ ******************************************************************************
+ */
+static int cmd_uptime(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    shell_print(sh, "Uptime: %lld ms", (long long)k_uptime_get());
+    return 0;
+}
+
+SHELL_CMD_ARG_REGISTER(uptime, NULL, "Show time since boot", cmd_uptime, 1, 0);
+
+/**
+ ******************************************************************************
  * @brief      解析 UTC 日期和时间并校验日历范围。
  * @param[in]  date:日期字符串。
  * @param[in]  time:时间字符串。
@@ -32,12 +52,11 @@ static int parse_datetime(const char *date, const char *time, struct rtc_time *v
     int max_day;
     char extra;
 
-    /* 尾部转换用于检测字段后的多余字符。 */
-    if (sscanf(date, "%d-%d-%d%c", &year, &month, &day, &extra) != 3
-        || sscanf(time, "%d:%d:%d%c", &hour, &minute, &second, &extra) != 3
-        || year < 2000 || year > 2099 || month < 1 || month > 12
-        || hour < 0 || hour > 23 || minute < 0 || minute > 59
-        || second < 0 || second > 59)
+    /* 限制数字宽度防止转换溢出，尾部转换用于检测多余字符。 */
+    if (sscanf(date, "%4d-%2d-%2d%c", &year, &month, &day, &extra) != 3
+        || sscanf(time, "%2d:%2d:%2d%c", &hour, &minute, &second, &extra) != 3 || year < 2000
+        || year > 2099 || month < 1 || month > 12 || hour < 0 || hour > 23 || minute < 0
+        || minute > 59 || second < 0 || second > 59)
     {
         return -EINVAL;
     }
@@ -145,11 +164,9 @@ static int cmd_date(const struct shell *sh, size_t argc, char **argv)
         return err;
     }
 
-    shell_print(sh, "%04d-%02d-%02d %02d:%02d:%02d UTC",
-            current.tm_year + 1900, current.tm_mon + 1, current.tm_mday,
-            current.tm_hour, current.tm_min, current.tm_sec);
+    shell_print(sh, "%04d-%02d-%02d %02d:%02d:%02d UTC", current.tm_year + 1900, current.tm_mon + 1,
+                current.tm_mday, current.tm_hour, current.tm_min, current.tm_sec);
     return 0;
 }
 
-SHELL_CMD_ARG_REGISTER(date, NULL, "UTC RTC time: date [YYYY-MM-DD HH:MM:SS]",
-               cmd_date, 1, 2);
+SHELL_CMD_ARG_REGISTER(date, NULL, "UTC RTC time: date [YYYY-MM-DD HH:MM:SS]", cmd_date, 1, 2);

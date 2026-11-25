@@ -15,12 +15,11 @@ USART0（PA9/PA10，产线）和 USART2（PB10/PB11，RS485）分别使用独立
 ```text
 serial stats
 serial read factory
-serial read rs485
 ```
 
 * `stats`：显示当前缓存量、容量、累计接收字节、丢弃字节、UART 错误次数及标志位。
 * `read`：非阻塞取出最多 64 字节，十六进制显示；再次执行可继续取出。
-* 手动 `read` 会消费数据。正式协议线程开始使用某端口后，不要同时用 Shell 抢读该端口。
+* 手动 `read` 会消费数据。RS485 由主板通信线程独占，Shell 拒绝读取，避免抢走协议字节。
 * 没有自动回显、转发或发送，不操作 RS485 DE；接收仍以物理连接 PB8、方向保持接收为前提。
 
 ## 业务线程接口
@@ -32,8 +31,9 @@ uint8_t data[64];
 ssize_t count;
 
 count = app_serial_rx_read(APP_SERIAL_RS485, data, sizeof(data), K_FOREVER);
-if (count > 0) {
-	/* Pass the received chunk to the protocol parser. */
+if (count > 0)
+{
+    /* 将收到的字节片段交给协议解析器。 */
 }
 ```
 

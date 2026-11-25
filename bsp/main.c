@@ -1,20 +1,13 @@
-#include <zephyr/kernel.h>
-#include <zephyr/shell/shell.h>
-
 #include "app.h"
 #include "board_startup.h"
 
-static int cmd_uptime(const struct shell *sh, size_t argc, char **argv)
-{
-    ARG_UNUSED(argc);
-    ARG_UNUSED(argv);
-
-    shell_print(sh, "Uptime: %lld ms", (long long)k_uptime_get());
-    return 0;
-}
-
-SHELL_CMD_ARG_REGISTER(uptime, NULL, "Show time since boot", cmd_uptime, 1, 0);
-
+/**
+ ******************************************************************************
+ * @brief      完成板级初始化后启动应用，随后结束主线程。
+ * @retval     0:主线程正常结束，或板级初始化失败后停止启动。
+ * @retval     负值:应用启动失败。
+ ******************************************************************************
+ */
 int main(void)
 {
     if (board_init())

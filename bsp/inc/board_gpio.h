@@ -3,17 +3,17 @@
 
 #include <stdbool.h>
 
-enum board_gpio_output_e
+typedef enum
 {
-    BOARD_GPIO_OUT_JDQ1,      /**< 预充继电器 JDQ1。 */
-    BOARD_GPIO_OUT_JDQ2,      /**< 预充继电器 JDQ2。 */
-    BOARD_GPIO_OUT_JDQ3,      /**< 预充继电器 JDQ3。 */
-    BOARD_GPIO_OUT_JDQ4,      /**< 预充继电器 JDQ4。 */
-    BOARD_GPIO_OUT_LED,       /**< 板载指示灯。 */
-    BOARD_GPIO_OUT_RS485_DE,  /**< RS485 方向，有效为发送。 */
+    BOARD_GPIO_OUT_JDQ1,     /**< 预充继电器 JDQ1。 */
+    BOARD_GPIO_OUT_JDQ2,     /**< 预充继电器 JDQ2。 */
+    BOARD_GPIO_OUT_JDQ3,     /**< 预充继电器 JDQ3。 */
+    BOARD_GPIO_OUT_JDQ4,     /**< 预充继电器 JDQ4。 */
+    BOARD_GPIO_OUT_LED,      /**< 板载指示灯。 */
+    BOARD_GPIO_OUT_RS485_DE, /**< RS485 方向，有效为发送。 */
     BOARD_GPIO_OUT_PE,       /**< PE 对外输出。 */
     BOARD_GPIO_OUT_COUNT,    /**< 输出数量。 */
-};
+} board_gpio_output_e;
 
 /**
  ******************************************************************************
@@ -37,7 +37,7 @@ int app_board_gpio_init(void);
  * @retval     其他负值:GPIO 驱动返回的错误码。
  ******************************************************************************
  */
-int app_board_gpio_write(enum board_gpio_output_e output, bool active);
+int app_board_gpio_write(board_gpio_output_e output, bool active);
 
 /**
  ******************************************************************************
@@ -50,7 +50,7 @@ int app_board_gpio_write(enum board_gpio_output_e output, bool active);
  * @retval     其他负值:GPIO 驱动返回的错误码。
  ******************************************************************************
  */
-int app_board_gpio_write_raw(enum board_gpio_output_e output, bool high);
+int app_board_gpio_write_raw(board_gpio_output_e output, bool high);
 
 /**
  ******************************************************************************
@@ -61,6 +61,6 @@ int app_board_gpio_write_raw(enum board_gpio_output_e output, bool high);
  * @retval     -EINVAL:输出指针为空或引脚未映射。
  ******************************************************************************
  */
-int app_board_gpio_find_pb(unsigned int pin, enum board_gpio_output_e *output);
+int app_board_gpio_find_pb(unsigned int pin, board_gpio_output_e *output);
 
 #endif /* BRINGUP_BOARD_GPIO_H_ */

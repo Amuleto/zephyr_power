@@ -16,6 +16,8 @@
 #define PARAMS_DEVICE_ID_KEY "app/device_id"
 
 static K_MUTEX_DEFINE(params_lock);
+/* 写入串行化，避免并发写入使 Flash 与 RAM 的最终编号不一致。 */
+static K_MUTEX_DEFINE(params_write_lock);
 static uint32_t current_device_id = PARAMS_DEFAULT_DEVICE_ID;
 static bool params_ready;
 static int load_error;
@@ -150,7 +152,7 @@ int app_params_get_device_id(uint32_t *device_id)
  * @retval     -EAGAIN:参数模块尚未就绪。
  * @retval     其他负值:存储错误。
  *
- * @details    写入 Flash，须在线程上下文调用。
+ * @details    写入 Flash，须在线程上下文调用。写入期间读取仍返回上次成功值。
  ******************************************************************************
  */
 int app_params_set_device_id(uint32_t device_id)
@@ -158,26 +160,32 @@ int app_params_set_device_id(uint32_t device_id)
     uint8_t encoded[sizeof(uint32_t)];
     int err;
 
+    k_mutex_lock(&params_write_lock, K_FOREVER);
     k_mutex_lock(&params_lock, K_FOREVER);
     if (!params_ready)
     {
         k_mutex_unlock(&params_lock);
+        k_mutex_unlock(&params_write_lock);
         return -EAGAIN;
     }
 
     if (device_id == current_device_id)
     {
         k_mutex_unlock(&params_lock);
+        k_mutex_unlock(&params_write_lock);
         return 0;
     }
+    k_mutex_unlock(&params_lock);
 
     sys_put_le32(device_id, encoded);
     err = settings_save_one(PARAMS_DEVICE_ID_KEY, encoded, sizeof(encoded));
     if (!err)
     {
+        k_mutex_lock(&params_lock, K_FOREVER);
         current_device_id = device_id;
+        k_mutex_unlock(&params_lock);
     }
-    k_mutex_unlock(&params_lock);
+    k_mutex_unlock(&params_write_lock);
     return err;
 }
 
@@ -256,8 +264,7 @@ static int cmd_param_set(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_STATIC_SUBCMD_SET_CREATE(param_commands,
     SHELL_CMD_ARG(get, NULL, "Read device identifier", cmd_param_get, 1, 0),
-    SHELL_CMD_ARG(set, NULL, "Save decimal device identifier: param set <id>",
-              cmd_param_set, 2, 0),
+    SHELL_CMD_ARG(set, NULL, "Save decimal device identifier: param set <id>", cmd_param_set, 2, 0),
     SHELL_SUBCMD_SET_END
 );
 SHELL_CMD_REGISTER(param, &param_commands, "Persistent device parameters", NULL);

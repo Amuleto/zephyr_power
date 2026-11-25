@@ -3,7 +3,9 @@
 
 # 编码风格指南
 
-本工程新增和修改的 C 代码遵循 Zephyr Coding Style。本文以中文说明常用规则；细节以当前依赖版本的官方文档和相邻代码为准。
+本文保留 Zephyr Coding Style 的中文参考，适用于阅读或修改 Zephyr 依赖源码。
+firmware 项目自有代码执行 [项目编码规范](coding_standard.md) 和 [AGENTS.md](../AGENTS.md)，
+采用 4 空格、Allman 大括号、typedef 和中文接口注释；不要用下文的 Tab 和普通类型定义覆盖项目规则。
 
 ## 规范来源与优先顺序
 
@@ -17,7 +19,8 @@
 
 ## 工具与检查
 
-firmware 根目录的 [`.clang-format`](../.clang-format) 复制自当前 gd32_zephyr，使用 Tab、8 列缩进和 100 列行宽。根目录的 [`.editorconfig`](../.editorconfig) 为编辑器提供基础格式设置。
+firmware 根目录的 [`.clang-format`](../.clang-format) 和 [`.editorconfig`](../.editorconfig)
+按项目规范配置为 4 空格、Allman 大括号和 100 列行宽。Zephyr 依赖仓库使用自己的格式配置。
 
 在 firmware 根目录，可以对具体修改文件运行：
 
@@ -34,6 +37,7 @@ Zephyr 还提供 `scripts/checkpatch.pl`。官方不支持在原生 Windows 中�
 git diff --cached | perl ../gd32_zephyr/scripts/checkpatch.pl -
 ```
 
+checkpatch 按 Zephyr 规范检查，不作为采用项目格式的 firmware 代码验收标准。
 应人工判断检查结果，工具可能产生误报。本工程目前没有配置上述检查的 GitHub CI，不应将文档中的命令理解为已经启用自动检查。
 
 ## 命名

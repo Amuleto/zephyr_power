@@ -6,7 +6,10 @@ project(gd32f303rc_bringup)
 target_sources(app PRIVATE
   app.c
   precharge/precharge.c
+  precharge/precharge_ctrl.c
+  precharge/precharge_io.c
   host_link/host_link.c
+  host_link/host_protocol.c
   gpio_shell.c
   precharge/mp10.c
   datetime.c

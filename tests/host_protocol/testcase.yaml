@@ -1,0 +1,8 @@
+tests:
+  firmware.host_protocol:
+    platform_allow:
+      - qemu_cortex_m3
+    tags:
+      - protocol
+    integration_platforms:
+      - qemu_cortex_m3

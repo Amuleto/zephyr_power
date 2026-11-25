@@ -8,13 +8,15 @@
 
 * [MCUboot 分区与参数存储](Storage_and_MCUboot.md)：Flash 布局、签名构建、参数命令和验证步骤。
 
-* [编码风格指南](Style_Guide.md)：Zephyr 中文编码规则、注释与 Doxygen 要求，以及格式检查方法。
+* [项目编码规范](coding_standard.md)：项目自有代码的格式、注释、接口和并发要求。
+* [协作与设计规则](../AGENTS.md)：任务职责、接口简化及交付检查要求。
+* [Zephyr 风格参考](Style_Guide.md)：阅读或修改 Zephyr 依赖源码时使用。
 * [工程说明](../README.md)：目录组织、依赖恢复、构建和 Git 管理。
 * [GD32F303 板级说明](../README-bringup.md)：硬件接线、编译烧录及验证说明。
 
 格式配置统一放在 firmware 根目录：
 
-* [`.clang-format`](../.clang-format)：与当前 gd32_zephyr 一致的 C/C++ 格式配置。
+* [`.clang-format`](../.clang-format)：项目 C/C++ 的 4 空格、Allman 大括号和 100 列配置。
 * [`.editorconfig`](../.editorconfig)：编辑器缩进、字符编码和换行约定。
 
 ## 来源与许可证

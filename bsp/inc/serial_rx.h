@@ -8,22 +8,23 @@
 #include <zephyr/kernel.h>
 
 /** 业务串口编号。UART4 由 Shell 独占。 */
-enum app_serial_port
+typedef enum
 {
-    APP_SERIAL_FACTORY, /**< 产线串口 USART0。 */
-    APP_SERIAL_RS485, /**< RS485 串口 USART2。 */
+    APP_SERIAL_FACTORY,    /**< 产线串口 USART0。 */
+    APP_SERIAL_RS485,      /**< RS485 串口 USART2。 */
     APP_SERIAL_PORT_COUNT, /**< 业务串口数量。 */
-};
+} app_serial_port_e;
 
 /** 接收状态快照。累计计数按 32 位无符号整数回绕。 */
-struct app_serial_rx_stats {
-    uint32_t pending; /**< 当前缓存字节数。 */
-    uint32_t capacity; /**< 缓冲区容量，单位为字节。 */
-    uint32_t received; /**< 从硬件读取的字节数，包含后续丢弃的字节。 */
-    uint32_t dropped; /**< 因缓冲区满而丢弃的新字节数。 */
+typedef struct
+{
+    uint32_t pending;      /**< 当前缓存字节数。 */
+    uint32_t capacity;     /**< 缓冲区容量，单位为字节。 */
+    uint32_t received;     /**< 从硬件读取的字节数，包含后续丢弃的字节。 */
+    uint32_t dropped;      /**< 因缓冲区满而丢弃的新字节数。 */
     uint32_t error_events; /**< UART 报告错误的次数。 */
-    uint32_t error_mask; /**< 累计 UART_ERROR_* 标志。 */
-};
+    uint32_t error_mask;   /**< 累计 UART_ERROR_* 标志。 */
+} app_serial_rx_stats_t;
 
 /**
  ******************************************************************************
@@ -56,8 +57,8 @@ int app_serial_rx_init(void);
  *             调用方保有 buffer 所有权。
  ******************************************************************************
  */
-ssize_t app_serial_rx_read(enum app_serial_port port, uint8_t *buffer,
-               size_t length, k_timeout_t timeout);
+ssize_t app_serial_rx_read(app_serial_port_e port, uint8_t *buffer, size_t length,
+                           k_timeout_t timeout);
 
 /**
  ******************************************************************************
@@ -69,6 +70,6 @@ ssize_t app_serial_rx_read(enum app_serial_port port, uint8_t *buffer,
  * @retval     -EAGAIN:模块尚未初始化。
  ******************************************************************************
  */
-int app_serial_rx_stats_get(enum app_serial_port port, struct app_serial_rx_stats *stats);
+int app_serial_rx_stats_get(app_serial_port_e port, app_serial_rx_stats_t *stats);
 
 #endif /* BRINGUP_SERIAL_RX_H_ */

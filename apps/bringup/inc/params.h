@@ -34,7 +34,7 @@ int app_params_get_device_id(uint32_t *device_id);
  * @retval     -EAGAIN:参数模块尚未就绪。
  * @retval     其他负值:存储错误。
  *
- * @details    写入 Flash，须在线程上下文调用。
+ * @details    写入 Flash，须在线程上下文调用。写入期间读取仍返回上次成功值。
  ******************************************************************************
  */
 int app_params_set_device_id(uint32_t device_id);

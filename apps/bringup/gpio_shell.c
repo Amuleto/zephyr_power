@@ -20,7 +20,7 @@
  */
 static int cmd_board_gpio(const struct shell *sh, size_t argc, char **argv)
 {
-    enum board_gpio_output_e output;
+    board_gpio_output_e output;
     unsigned int pin;
     bool high;
     int err;
@@ -64,5 +64,5 @@ static int cmd_board_gpio(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
-SHELL_CMD_ARG_REGISTER(gpio, NULL, "Set PB3-PB6 or PB13: gpio <3-6|13> <0|1>",
-                       cmd_board_gpio, 3, 0);
+SHELL_CMD_ARG_REGISTER(gpio, NULL, "Set PB3-PB6 or PB13: gpio <3-6|13> <0|1>", cmd_board_gpio, 3,
+                       0);

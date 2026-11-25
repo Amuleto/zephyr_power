@@ -7,14 +7,16 @@
 - `bsp/main.c`：完成板级初始化，启动应用线程后返回。
 - `bsp/board_startup.c`：提供 `board_init()`，统一初始化 GPIO、ADC、业务串口，检查 RTC 并准备看门狗。
 - `bsp/board_watchdog.c`：提供硬件后备看门狗初始化、任务通道注册和进度上报接口。
-- `apps/bringup/app.c`：通过 `app_run()` 启动预充和 RS485 线程。预充线程负责回读、镜像确认和看门狗进度上报。
+- `apps/bringup/app.c`：通过 `app_run()` 加载参数、确认镜像并启动预充和 RS485 线程。
 - `apps/bringup/precharge/` 存放预充和 MP10 实现，公共接口为 `inc/precharge.h`。
 - `apps/bringup/host_link/` 存放 RS485 任务实现，公共接口为 `inc/host_link.h`。
 - `bsp/`：板级 GPIO、ADC 和业务串口接收，公共头文件位于 `bsp/inc/`。LED 闪烁和 Shell 调试逻辑位于应用层。
-- `apps/bringup/datetime.c`：日期解析、RTC 设时/读时和 date 命令。
+- `apps/bringup/datetime.c`：日期解析、RTC 设时/读时，以及 date、uptime 命令。
 - `apps/bringup/prj.conf`：按 GPIO、Shell、日志、看门狗、RTC 和构建产物分组。
 
-预充线程初始化 CAN，约每 20 ms 更新 MP10 状态，每约 500 ms 翻转心跳灯，每轮完成后喂任务看门狗。
+板级初始化启动 CAN 控制器；预充线程安装 MP10 接收过滤器，约每 20 ms 更新 MP10 和预充状态，
+每约 500 ms 翻转心跳灯，每轮完成后喂任务看门狗。电压采集与继电器操作位于 precharge_io.c，
+预充时序和对外请求接口位于 precharge_ctrl.c，任务入口保留模块调度。
 
 原理图外设配置见 [预充检测板硬件说明](docs/Precharge_Hardware.md)。新增 `board adc` 读取 9 路 ADC，继电器保持关闭，RS485 方向使用待接线的 PB8。
 
@@ -32,7 +34,7 @@
 
 当前采用 MCUboot 联合构建，产物位于 `../build/bringup_gd32f303rc_mcuboot/`。首次烧录需要 bootloader 和签名应用，分区与命令见 [MCUboot 与参数存储](docs/Storage_and_MCUboot.md)。
 
-`apps/bringup/params.c` 和 `params.h` 提供 Settings/NVS 参数读写，Shell 使用 `param get`、`param set <id>`。
+`apps/bringup/params.c` 和 `inc/params.h` 提供 Settings/NVS 参数读写，Shell 使用 `param get`、`param set <id>`。
 
 USART0 和 USART2 各有 512 字节 RX 环形缓冲。`serial stats` 查看两路状态，`serial read factory` 读取产线串口。RS485 线程独占 USART2 和 PB8。
 

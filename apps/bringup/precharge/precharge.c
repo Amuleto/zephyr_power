@@ -5,6 +5,7 @@
 #include "board_watchdog.h"
 #include "mp10.h"
 #include "precharge.h"
+#include "precharge_ctrl.h"
 
 /** 预充回读的联调间隔，单位为毫秒，量产值依据实际检测时限确定。 */
 #define PRECHARGE_TASK_INTERVAL_MS 20u
@@ -68,6 +69,7 @@ static void led_flash(void)
 static void precharge_entry(void *arg1, void *arg2, void *arg3)
 {
     mp10_context_t mp10 = {0};
+    precharge_run_t run = {0};
     int channel;
     int err;
 
@@ -88,15 +90,20 @@ static void precharge_entry(void *arg1, void *arg2, void *arg3)
         LOG_ERR("MP10 receive filter setup failed: %d", err);
     }
 
+    precharge_ctrl_init(&run, err);
+
     for (;;)
     {
-        led_flash();
-
         mp10_task(&mp10);
+
+        precharge_ctrl_step(&run, &mp10);
+
+        led_flash();
 
         err = board_watchdog_feed(channel);
         if (err)
         {
+            precharge_ctrl_shutdown(&run, &mp10, err);
             return;
         }
 
@@ -113,7 +120,6 @@ static void precharge_entry(void *arg1, void *arg2, void *arg3)
  */
 void precharge_start(void)
 {
-    (void)k_thread_create(&precharge_thread, precharge_stack,
-                         K_THREAD_STACK_SIZEOF(precharge_stack), precharge_entry,
-                         NULL, NULL, NULL, PRECHARGE_TASK_PRIORITY, 0, K_NO_WAIT);
+    k_thread_create(&precharge_thread, precharge_stack, K_THREAD_STACK_SIZEOF(precharge_stack),
+                    precharge_entry, NULL, NULL, NULL, PRECHARGE_TASK_PRIORITY, 0, K_NO_WAIT);
 }

@@ -34,6 +34,7 @@ int app_run(void)
     }
 
     precharge_start();
+
     host_link_start();
     return 0;
 }

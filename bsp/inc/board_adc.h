@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-enum app_adc_channel_e
+typedef enum
 {
     APP_ADC_PA0 = 0, /**< 通道 1 继电器前。 */
     APP_ADC_PA1,     /**< 通道 1 电阻后。 */
@@ -14,7 +14,7 @@ enum app_adc_channel_e
     APP_ADC_PA5,     /**< 通道 3 电阻后。 */
     APP_ADC_PA6,     /**< 通道 4 继电器前。 */
     APP_ADC_PA7      /**< 通道 4 电阻后。 */
-};
+} app_adc_channel_e;
 
 /**
  ******************************************************************************
@@ -41,7 +41,7 @@ int app_board_adc_init(void);
  *             输出为 MCU 引脚电压。失败时保持输出值。
  ******************************************************************************
  */
-int app_board_adc_get_voltage(enum app_adc_channel_e channel, int32_t *voltage_mv);
+int app_board_adc_get_voltage(app_adc_channel_e channel, int32_t *voltage_mv);
 
 /**
  ******************************************************************************
