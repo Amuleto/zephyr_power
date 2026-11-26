@@ -5,7 +5,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/byteorder.h>
-#include <zephyr/sys/printk.h>
 
 #include "app_clock.h"
 #include "board_watchdog.h"
@@ -24,18 +23,12 @@
 /** 心跳请求周期，单位为毫秒。 */
 #define HOST_LINK_HEARTBEAT_MS 3000u
 /** 心跳应答占用总线的联调窗口，单位为毫秒。 */
-#define HOST_LINK_HEARTBEAT_REPLY_MS 100u
+#define HOST_LINK_HEARTBEAT_GUARD_MS 100u
 /** RS485 线程进度上报的超时，单位为毫秒。 */
 #define HOST_LINK_WATCHDOG_TIMEOUT_MS 3000u
-/** 上报重发间隔，单位为毫秒，联调值。 */
-#define HOST_LINK_FAULT_RETRY_MS 250u
-/** 预充完成上报重发间隔，单位为毫秒。 */
-#define HOST_LINK_DONE_RETRY_MS 500u
-/** 普通故障上报的最大发送尝试数，联调值。 */
-#define HOST_LINK_FAULT_ATTEMPTS 3u
 typedef enum
 {
-    HOST_LINK_NO_EVENT = 0,       /**< 当前没有待确认上报。 */
+    HOST_LINK_NO_EVENT = 0,       /**< 当前没有待发送上报。 */
     HOST_LINK_PRECHARGE_DONE = 1, /**< 电压检查通过。 */
     HOST_LINK_FAULT = 2,          /**< 预充或运行故障。 */
 } host_link_event_e;
@@ -69,40 +62,21 @@ typedef struct
 {
     host_protocol_parser_t parser; /**< 当前串口字节流的解析状态。 */
     int64_t heartbeat_at_ms; /**< 下次心跳发送时刻。 */
-    int64_t heartbeat_reply_by_ms; /**< 当前心跳应答的截止时间。 */
-    uint32_t precharge_id; /**< 已处理快照的内部事务编号，不在线协议中传输。 */
-    host_link_event_e event;        /**< 当前等待确认的上报类型。 */
-    uint16_t sequence;              /**< 上报序号，重发时保持一致。 */
-    host_link_report_data_t report; /**< 待重发的上报 Data。 */
+    int64_t heartbeat_guard_until_ms; /**< 主动上报避让截止时刻。 */
+    int64_t heartbeat_sent_ms; /**< 待应答心跳的发送完成时刻，-1 表示无待应答心跳。 */
+    uint32_t precharge_id; /**< 完成事件的内部编号，不在线协议中传输。 */
+    uint16_t handover_sequence; /**< 已发完成上报的序号，用于匹配接管应答。 */
+    bool handover_pending; /**< 已发送完成上报，等待接管应答。 */
+    host_link_event_e event;        /**< 当前待发送的上报类型。 */
+    uint16_t sequence;              /**< 最近分配的上报序号。 */
+    host_link_report_data_t report; /**< 待发送的上报 Data。 */
     size_t report_size;             /**< 待重发 Data 长度。 */
-    int64_t retry_at_ms;            /**< 最早可以重发的时间。 */
-    unsigned int attempts;          /**< 当前上报的发送尝试数。 */
-    bool sent;                      /**< 当前上报已成功发出至少一次。 */
 } host_link_session_t;
 
-LOG_MODULE_REGISTER(host_link, LOG_LEVEL_WRN);
+LOG_MODULE_REGISTER(host_link, LOG_LEVEL_INF);
 
 static K_THREAD_STACK_DEFINE(host_link_stack, HOST_LINK_STACK_SIZE);
 static struct k_thread host_link_thread;
-
-/**
- ******************************************************************************
- * @brief      将完整 RS485 帧以十六进制输出到调试串口。
- * @param[in]  direction:以预充板为视角的收发方向。
- * @param[in]  bytes:整帧原始字节。
- * @param[in]  length:整帧长度。
- * @retval     None
- ******************************************************************************
- */
-static void trace_frame(const char *direction, const uint8_t *bytes, size_t length)
-{
-    printk("RS485 %s:", direction);
-    for (size_t i = 0; i < length; i++)
-    {
-        printk(" %02X", (unsigned int)bytes[i]);
-    }
-    printk("\n");
-}
 
 /**
  ******************************************************************************
@@ -140,7 +114,7 @@ static int send_frame(host_link_type_e type, uint8_t command, const void *data, 
     }
     else
     {
-        trace_frame("TX", (const uint8_t *)&frame, (size_t)size);
+        LOG_HEXDUMP_INF(&frame, (size_t)size, "RS485 TX");
     }
     return err;
 }
@@ -204,7 +178,7 @@ static void handle_stop(host_link_session_t *session, const uint8_t *data)
 
 /**
  ******************************************************************************
- * @brief      受理主控清除故障指令，停止旧故障报文的重发。
+ * @brief      受理主控清除故障指令，取消尚未发出的旧故障上报。
  * @param[in,out] session:通信线程持有的状态。
  * @param[in]  data:空载荷，未使用。
  * @retval     None
@@ -233,17 +207,33 @@ static void handle_clear_faults(host_link_session_t *session, const uint8_t *dat
  */
 static void handle_heartbeat(host_link_session_t *session, const uint8_t *data)
 {
-    if (k_uptime_get() >= session->heartbeat_reply_by_ms)
+    int64_t now_ms = k_uptime_get();
+    uint32_t unix_seconds = sys_get_le32(data);
+    long long elapsed_ms = now_ms - session->heartbeat_sent_ms;
+    int result;
+
+    if (session->heartbeat_sent_ms < 0)
     {
+        LOG_WRN("Heartbeat reply ignored: no pending request");
         return;
     }
-    session->heartbeat_reply_by_ms = 0;
+    session->heartbeat_sent_ms = -1;
+    session->heartbeat_guard_until_ms = 0;
 
-    int result = app_clock_sync(sys_get_le32(data));
+    result = app_clock_sync(unix_seconds);
 
     if (result < 0)
     {
-        LOG_WRN("Heartbeat RTC sync failed: %d", result);
+        LOG_WRN("Heartbeat reply %lld ms: RTC sync failed: %d (UTC=%u)", elapsed_ms, result,
+                unix_seconds);
+    }
+    else if (result == 0)
+    {
+        LOG_INF("Heartbeat reply %lld ms: RTC difference under 5 s", elapsed_ms);
+    }
+    else
+    {
+        LOG_INF("Heartbeat reply %lld ms: RTC synchronized (UTC=%u)", elapsed_ms, unix_seconds);
     }
 }
 
@@ -257,21 +247,18 @@ static void handle_heartbeat(host_link_session_t *session, const uint8_t *data)
  */
 static void handle_report_ack(host_link_session_t *session, const uint8_t *data)
 {
-    if (!session->sent || session->event == HOST_LINK_NO_EVENT
-        || sys_get_le16(data) != session->sequence)
+    int err;
+
+    if (!session->handover_pending || sys_get_le16(data) != session->handover_sequence)
     {
         return;
     }
-    if (session->event == HOST_LINK_PRECHARGE_DONE)
+    session->handover_pending = false;
+    err = precharge_confirm_handover(session->precharge_id);
+    if (err)
     {
-        int err = precharge_confirm_handover(session->precharge_id);
-
-        if (err)
-        {
-            LOG_WRN("Precharge report ACK rejected: %d", err);
-        }
+        LOG_WRN("Precharge report ACK rejected: %d", err);
     }
-    session->event = HOST_LINK_NO_EVENT;
 }
 
 /** 完整帧业务处理函数，载荷长度已由分发入口检查。 */
@@ -345,15 +332,20 @@ static void update_report(host_link_session_t *session)
     }
     if (report.type == PRECHARGE_EVENT_CANCEL)
     {
-        if (session->event == HOST_LINK_PRECHARGE_DONE && session->precharge_id == report.id)
+        if (session->precharge_id == report.id)
         {
-            session->event = HOST_LINK_NO_EVENT;
+            session->handover_pending = false;
+            if (session->event == HOST_LINK_PRECHARGE_DONE)
+            {
+                session->event = HOST_LINK_NO_EVENT;
+            }
         }
         return;
     }
     if (report.type == PRECHARGE_EVENT_DONE)
     {
         session->precharge_id = report.id;
+        session->handover_pending = false;
         session->event = HOST_LINK_PRECHARGE_DONE;
         session->report_size = offsetof(host_link_report_data_t, cause);
     }
@@ -404,45 +396,31 @@ static void update_report(host_link_session_t *session)
     session->sequence++;
     sys_put_le16(session->sequence, session->report.sequence_le);
     session->report.event = (uint8_t)session->event;
-    session->retry_at_ms = 0;
-    session->attempts = 0;
-    session->sent = false;
 }
 
 /**
  ******************************************************************************
- * @brief      在总线空闲时发送或重发待确认的主动上报。
+ * @brief      在总线空闲时发送一次上报，完成上报发送成功后等待接管应答。
  * @param[in,out] session:通信线程持有的状态。
  * @retval     None
  ******************************************************************************
  */
 static void send_report(host_link_session_t *session)
 {
-    int64_t now_ms = k_uptime_get();
-    uint32_t retry_ms = HOST_LINK_FAULT_RETRY_MS;
+    int err;
 
-    if (session->event == HOST_LINK_NO_EVENT || now_ms < session->retry_at_ms)
+    if (session->event == HOST_LINK_NO_EVENT)
     {
         return;
     }
 
-    if (session->event == HOST_LINK_FAULT && session->attempts >= HOST_LINK_FAULT_ATTEMPTS)
+    err = send_frame(HOST_LINK_REPORT, 1u, &session->report, session->report_size);
+    if (!err && session->event == HOST_LINK_PRECHARGE_DONE)
     {
-        LOG_WRN("RS485 fault report unacknowledged: %u", session->sequence);
-        session->event = HOST_LINK_NO_EVENT;
-        return;
+        session->handover_sequence = session->sequence;
+        session->handover_pending = true;
     }
-
-    if (!send_frame(HOST_LINK_REPORT, 1u, &session->report, session->report_size))
-    {
-        session->sent = true;
-    }
-    session->attempts++;
-    if (session->event == HOST_LINK_PRECHARGE_DONE)
-    {
-        retry_ms = HOST_LINK_DONE_RETRY_MS;
-    }
-    session->retry_at_ms = k_uptime_get() + retry_ms;
+    session->event = HOST_LINK_NO_EVENT;
 }
 
 /**
@@ -456,7 +434,7 @@ static void send_report(host_link_session_t *session)
  */
 static void host_link_entry(void *arg1, void *arg2, void *arg3)
 {
-    host_link_session_t session = {0};
+    host_link_session_t session = {.heartbeat_sent_ms = -1};
     uint8_t bytes[32];
     int channel;
 
@@ -489,8 +467,9 @@ static void host_link_entry(void *arg1, void *arg2, void *arg3)
             {
                 do
                 {
-                    trace_frame("RX", (const uint8_t *)&session.parser.frame,
-                                sys_get_be16(session.parser.frame.header.length_be));
+                    LOG_HEXDUMP_INF(&session.parser.frame,
+                                    sys_get_be16(session.parser.frame.header.length_be),
+                                    "RS485 RX");
                     handle_frame(&session);
                 } while (host_protocol_next(&session.parser));
             }
@@ -502,15 +481,16 @@ static void host_link_entry(void *arg1, void *arg2, void *arg3)
             {
                 int64_t now_ms = k_uptime_get();
 
-                if (now_ms >= session.heartbeat_reply_by_ms)
+                if (now_ms >= session.heartbeat_guard_until_ms)
                 {
                     if (now_ms >= session.heartbeat_at_ms)
                     {
                         session.heartbeat_at_ms = now_ms + HOST_LINK_HEARTBEAT_MS;
                         if (!send_frame(HOST_LINK_HEARTBEAT, 1u, NULL, 0))
                         {
-                            session.heartbeat_reply_by_ms =
-                                k_uptime_get() + HOST_LINK_HEARTBEAT_REPLY_MS;
+                            session.heartbeat_sent_ms = k_uptime_get();
+                            session.heartbeat_guard_until_ms =
+                                session.heartbeat_sent_ms + HOST_LINK_HEARTBEAT_GUARD_MS;
                         }
                     }
                     else

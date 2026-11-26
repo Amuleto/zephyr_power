@@ -4,6 +4,10 @@
 
 #include <zephyr/drivers/rtc.h>
 #include <zephyr/kernel.h>
+#include <zephyr/init.h>
+#include <zephyr/logging/log_ctrl.h>
+#include <zephyr/logging/log_output_custom.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/timeutil.h>
 
@@ -11,6 +15,95 @@
 
 static const struct device *const rtc_dev = DEVICE_DT_GET(DT_ALIAS(rtc0));
 static K_MUTEX_DEFINE(clock_lock);
+
+#if defined(CONFIG_LOG_OUTPUT_FORMAT_CUSTOM_TIMESTAMP)
+/** 首个受支持的 UTC Unix 时间，2000-01-01。 */
+#define APP_CLOCK_FIRST_UNIX_SECONDS 946684800u
+/** 日志显示北京时间，RTC 仍保存 UTC。 */
+#define APP_CLOCK_LOG_UTC_OFFSET_SECONDS (8u * 3600u)
+
+/* 通过一个原子值发布 RTC 与单调时钟的秒偏移，零表示尚未设时。 */
+static atomic_t log_clock_offset;
+
+/**
+ ******************************************************************************
+ * @brief      读取可用于中断上下文的日志时刻。
+ * @retval     已校时时返回 UTC 秒数，否则返回零。
+ ******************************************************************************
+ */
+static log_timestamp_t app_log_timestamp(void)
+{
+    uint32_t offset = (uint32_t)atomic_get(&log_clock_offset);
+
+    if (offset == 0u)
+    {
+        return 0;
+    }
+    return offset + (uint32_t)(k_uptime_get() / 1000);
+}
+
+/**
+ ******************************************************************************
+ * @brief      将日志产生时刻格式化为北京时间。
+ * @param[in]  output:日志输出上下文。
+ * @param[in]  timestamp:消息创建时记录的时刻。
+ * @param[in]  printer:日志格式化输出函数。
+ * @retval     已输出的字符数。
+ ******************************************************************************
+ */
+static int format_log_timestamp(const struct log_output *output, log_timestamp_t timestamp,
+                                log_timestamp_printer_t printer)
+{
+    time_t seconds = (time_t)timestamp + APP_CLOCK_LOG_UTC_OFFSET_SECONDS;
+    struct tm local;
+
+    if (timestamp < APP_CLOCK_FIRST_UNIX_SECONDS || !gmtime_r(&seconds, &local))
+    {
+        return printer(output, "[time unset] ");
+    }
+    return printer(output, "[%04d-%02d-%02d %02d:%02d:%02d] ", local.tm_year + 1900,
+                   local.tm_mon + 1, local.tm_mday, local.tm_hour, local.tm_min, local.tm_sec);
+}
+
+/**
+ ******************************************************************************
+ * @brief      在应用任务启动前注册日志时钟和格式化函数。
+ * @retval     0:注册成功。
+ * @retval     负值:注册日志时钟失败。
+ ******************************************************************************
+ */
+static int init_log_clock(void)
+{
+    log_custom_timestamp_set(format_log_timestamp);
+    return log_set_timestamp_func(app_log_timestamp, 1u);
+}
+
+SYS_INIT(init_log_clock, APPLICATION, 0);
+#endif /* CONFIG_LOG_OUTPUT_FORMAT_CUSTOM_TIMESTAMP */
+
+/**
+ ******************************************************************************
+ * @brief      写入 RTC 并发布对应的日志时间基准，调用方持有时钟锁。
+ * @param[in]  value:UTC 日历时间。
+ * @retval     0:写入成功。
+ * @retval     负值:RTC 写入错误。
+ ******************************************************************************
+ */
+static int write_clock(struct rtc_time *value)
+{
+    int err = rtc_set_time(rtc_dev, value);
+
+#if defined(CONFIG_LOG_OUTPUT_FORMAT_CUSTOM_TIMESTAMP)
+    if (!err)
+    {
+        uint32_t seconds = (uint32_t)timeutil_timegm64(rtc_time_to_tm(value));
+        uint32_t uptime_seconds = (uint32_t)(k_uptime_get() / 1000);
+
+        atomic_set(&log_clock_offset, (atomic_val_t)(seconds - uptime_seconds));
+    }
+#endif
+    return err;
+}
 
 /**
  ******************************************************************************
@@ -110,7 +203,7 @@ static int set_datetime(const struct shell *sh, const char *date, const char *ti
     }
 
     k_mutex_lock(&clock_lock, K_FOREVER);
-    err = rtc_set_time(rtc_dev, &value);
+    err = write_clock(&value);
     k_mutex_unlock(&clock_lock);
     if (err)
     {
@@ -217,7 +310,7 @@ int app_clock_sync(uint32_t unix_seconds)
         k_mutex_unlock(&clock_lock);
         return err;
     }
-    err = rtc_set_time(rtc_dev, &target);
+    err = write_clock(&target);
     k_mutex_unlock(&clock_lock);
     if (err)
     {
