@@ -5,6 +5,9 @@
 #include <zephyr/drivers/rtc.h>
 #include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
+#include <zephyr/sys/timeutil.h>
+
+#include "app_clock.h"
 
 static const struct device *const rtc_dev = DEVICE_DT_GET(DT_ALIAS(rtc0));
 static K_MUTEX_DEFINE(clock_lock);
@@ -170,3 +173,55 @@ static int cmd_date(const struct shell *sh, size_t argc, char **argv)
 }
 
 SHELL_CMD_ARG_REGISTER(date, NULL, "UTC RTC time: date [YYYY-MM-DD HH:MM:SS]", cmd_date, 1, 2);
+
+/**
+ ******************************************************************************
+ * @brief      在主板时间与本地 RTC 相差至少五秒时同步。
+ * @param[in]  unix_seconds:主板 UTC Unix 秒数，支持 2000～2099 年。
+ * @retval     1:已设置 RTC。
+ * @retval     0:时差小于五秒，无需设置。
+ * @retval     负值:时间无效或 RTC 操作失败。
+ ******************************************************************************
+ */
+int app_clock_sync(uint32_t unix_seconds)
+{
+    time_t seconds = unix_seconds;
+    struct rtc_time target = {0};
+    struct rtc_time local = {0};
+    int err;
+
+    if (!gmtime_r(&seconds, rtc_time_to_tm(&target)) || target.tm_year < 100
+        || target.tm_year > 199)
+    {
+        return -EINVAL;
+    }
+    if (!device_is_ready(rtc_dev))
+    {
+        return -ENODEV;
+    }
+
+    k_mutex_lock(&clock_lock, K_FOREVER);
+    err = rtc_get_time(rtc_dev, &local);
+    if (!err)
+    {
+        int64_t delta = (int64_t)unix_seconds - timeutil_timegm64(rtc_time_to_tm(&local));
+
+        if (delta > -5 && delta < 5)
+        {
+            k_mutex_unlock(&clock_lock);
+            return 0;
+        }
+    }
+    else if (err != -ENODATA)
+    {
+        k_mutex_unlock(&clock_lock);
+        return err;
+    }
+    err = rtc_set_time(rtc_dev, &target);
+    k_mutex_unlock(&clock_lock);
+    if (err)
+    {
+        return err;
+    }
+    return 1;
+}

@@ -1,5 +1,7 @@
 #include <errno.h>
 
+#include <zephyr/kernel.h>
+
 #include "board_adc.h"
 #include "board_gpio.h"
 #include "precharge_io.h"
@@ -14,20 +16,18 @@
 /**
  ******************************************************************************
  * @brief      读取同一采样轮次的四路前后高压侧电压。
- * @param[out] input_mv:继电器前电压数组，单位为 mV，容量至少四项。
- * @param[out] load_mv:电阻后电压数组，单位为 mV，容量至少四项。
+ * @param[out] snapshot:输出快照，成功时按位图读取各路电压。
  * @retval     0:读取成功。
  * @retval     -EINVAL:输出地址为空。
  * @retval     其他负值:ADC 采样失败。
  ******************************************************************************
  */
-int precharge_read_voltages(int32_t input_mv[PRECHARGE_CHANNEL_COUNT],
-                            int32_t load_mv[PRECHARGE_CHANNEL_COUNT])
+int precharge_read_snapshot(precharge_adc_snapshot_t *snapshot)
 {
     int32_t adc_mv[2u * PRECHARGE_CHANNEL_COUNT];
     int err;
 
-    if (input_mv == NULL || load_mv == NULL)
+    if (snapshot == NULL)
     {
         return -EINVAL;
     }
@@ -38,22 +38,22 @@ int precharge_read_voltages(int32_t input_mv[PRECHARGE_CHANNEL_COUNT],
         return err;
     }
 
-    for (unsigned int i = 0; i < 2u * PRECHARGE_CHANNEL_COUNT; i++)
-    {
-        /* ADC 贴地时，直接换算会把失效的通道当成高电压。 */
-        if (adc_mv[i] <= 0)
-        {
-            return -ERANGE;
-        }
-    }
-
-    /* 引脚输入和换算结果都使用 mV，保留高压侧的符号。 */
+    *snapshot = (precharge_adc_snapshot_t){.read_ms = k_uptime_get()};
     for (unsigned int i = 0; i < PRECHARGE_CHANNEL_COUNT; i++)
     {
-        input_mv[i] = (PRECHARGE_ADC_ZERO_MV - adc_mv[2u * i]) * PRECHARGE_ADC_GAIN_NUM
-                      / PRECHARGE_ADC_GAIN_DEN;
-        load_mv[i] = (PRECHARGE_ADC_ZERO_MV - adc_mv[2u * i + 1u]) * PRECHARGE_ADC_GAIN_NUM
-                     / PRECHARGE_ADC_GAIN_DEN;
+        int32_t input = adc_mv[2u * i];
+        int32_t load = adc_mv[2u * i + 1u];
+
+        /* 贴地读数可能是失效输入，此时不能换算为高压。 */
+        if (input <= 0 || load <= 0)
+        {
+            continue;
+        }
+        snapshot->input_mv[i] = (PRECHARGE_ADC_ZERO_MV - input) * PRECHARGE_ADC_GAIN_NUM
+                                / PRECHARGE_ADC_GAIN_DEN;
+        snapshot->load_mv[i] = (PRECHARGE_ADC_ZERO_MV - load) * PRECHARGE_ADC_GAIN_NUM
+                               / PRECHARGE_ADC_GAIN_DEN;
+        snapshot->valid_channels |= BIT(i);
     }
     return 0;
 }

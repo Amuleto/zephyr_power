@@ -11,16 +11,12 @@
 
 /** 经典 CAN 测量帧的 DLC，对应八字节。 */
 #define MP10_MEASUREMENT_DLC 8u
-/** 测量帧判为过期的年龄阈值，单位为毫秒。 */
-#define MP10_TIMEOUT_MS 100u
 /** 剩余电流为零时的协议编码值。 */
 #define MP10_ZERO_OFFSET INT64_C(0x80000000)
 /** 每轮最多处理的 CAN 收发回调事件数，限制任务单轮开销。 */
 #define MP10_EVENT_BUDGET 8u
 /** CAN 回调事件队列容量，满时丢弃新事件并累计告警。 */
 #define MP10_EVENT_QUEUE_DEPTH 32u
-/** 周期测量报文的日志间隔，单位为毫秒。 */
-#define MP10_MEASUREMENT_LOG_INTERVAL_MS 1000u
 /** 自检命令字，同时出现在设备的应答中。 */
 #define MP10_SELFTEST_COMMAND 0x44u
 /** 上电收到首条有效测量帧后执行两项自检。 */
@@ -390,27 +386,14 @@ static void complete_selftest_tx(mp10_context_t *task, const mp10_event_t *event
 
 /**
  ******************************************************************************
- * @brief      打印接收到的 CAN ID 和原始数据。
- * @param[in,out] task:持有四路共用日志限流时间的线程状态。
+ * @brief      打印自检应答的 CAN ID 和原始数据。
  * @param[in]  frame:待打印的 CAN 报文。
  * @retval     None
  ******************************************************************************
  */
-static void log_rx_frame(mp10_context_t *task, const struct can_frame *frame)
+static void log_selftest_reply(const struct can_frame *frame)
 {
     char data[2u * sizeof(frame->data) + 1u] = "";
-
-    /* 四路测量共用每秒一条的限流，自检应答不受此限制。 */
-    if (frame->dlc == MP10_MEASUREMENT_DLC)
-    {
-        int64_t now_ms = k_uptime_get();
-
-        if (now_ms < task->next_measurement_log_ms)
-        {
-            return;
-        }
-        task->next_measurement_log_ms = now_ms + MP10_MEASUREMENT_LOG_INTERVAL_MS;
-    }
 
     bin2hex(frame->data, frame->dlc, data, sizeof(data));
 
@@ -443,7 +426,10 @@ static void process_events(mp10_context_t *task)
         else
         {
             parse_frame(task, &event);
-            log_rx_frame(task, &event.frame);
+            if (event.frame.dlc != MP10_MEASUREMENT_DLC)
+            {
+                log_selftest_reply(&event.frame);
+            }
         }
     }
 

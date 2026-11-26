@@ -10,16 +10,6 @@
 
 typedef enum
 {
-    PRECHARGE_IDLE,          /**< 尚无预充事务。 */
-    PRECHARGE_CHECKING,      /**< 正在检查电压并执行预充。 */
-    PRECHARGE_WAIT_HANDOVER, /**< 电压检查通过，等待旁路吸合确认。 */
-    PRECHARGE_COMPLETE,      /**< 已确认接管并释放预充输出。 */
-    PRECHARGE_FAILED,        /**< 检查失败，已尝试释放全部输出。 */
-    PRECHARGE_STOPPED,       /**< 收到停止指令，已尝试释放全部输出。 */
-} precharge_status_e;
-
-typedef enum
-{
     PRECHARGE_CAUSE_NONE,     /**< 无故障。 */
     PRECHARGE_CAUSE_INPUT,    /**< 输入电压检查不通过。 */
     PRECHARGE_CAUSE_VOLTAGE,  /**< 预充结束时电压不合格。 */
@@ -30,39 +20,35 @@ typedef enum
     PRECHARGE_CAUSE_INTERNAL, /**< 预充线程内部错误。 */
 } precharge_cause_e;
 
-/** 单路 MP10 快照。电流仅在 usable 为真时用于漏电判定。 */
-typedef struct
+/** 对外事件类别。 */
+typedef enum
 {
-    int64_t current_deci_ma; /**< 剩余电流，单位为 0.1 mA。 */
-    uint16_t error_code;     /**< MP10 设备故障码。 */
-    bool online;             /**< MP10 周期帧未过期。 */
-    bool fault;              /**< MP10 报告设备故障。 */
-    bool selftest_passed;    /**< 该模块本次上电自检已通过。 */
-    bool usable;             /**< 已越过 U46 和自检的恢复窗口。 */
-} precharge_leakage_t;
+    PRECHARGE_EVENT_CANCEL, /**< 本轮接管已失效。 */
+    PRECHARGE_EVENT_DONE, /**< 等待主板接管。 */
+    PRECHARGE_EVENT_FAULT, /**< 预充或输出故障。 */
+    PRECHARGE_EVENT_MP10_FAULT, /**< MP10 故障通道。 */
+    PRECHARGE_EVENT_LEAKAGE, /**< 漏电超限。 */
+    PRECHARGE_EVENT_COUNT, /**< 事件槽数量。 */
+} precharge_event_e;
 
-/** 供主板通信线程读取的事务快照。 */
+/** 交付通信任务的事件副本。 */
 typedef struct
 {
-    uint32_t id;               /**< 本次事务编号，零表示尚无事务。 */
-    precharge_status_e status; /**< 当前事务状态。 */
-    precharge_cause_e cause;   /**< 本次预充的故障类别。 */
-    uint8_t failed_channels;   /**< 检查失败的通道，第 1 路对应 bit 0。 */
-    int error;                 /**< 检查、采样或接管失败的错误码。 */
-    int release_error;         /**< 释放输出时的首个错误码。 */
-    int32_t input_mv[PRECHARGE_CHANNEL_COUNT]; /**< 继电器前高压侧电压，单位为 mV。 */
-    int32_t load_mv[PRECHARGE_CHANNEL_COUNT];  /**< 电阻后高压侧电压，单位为 mV。 */
-    precharge_leakage_t leakage[PRECHARGE_CHANNEL_COUNT]; /**< 各路最新 MP10 状态。 */
-} precharge_report_t;
+    precharge_event_e type; /**< 事件类别。 */
+    uint32_t id; /**< 本地接管标识。 */
+    precharge_cause_e cause; /**< 故障原因。 */
+    uint8_t channels; /**< 故障通道位图。 */
+    int32_t current[PRECHARGE_CHANNEL_COUNT]; /**< 漏电电流，单位 0.1 mA。 */
+} precharge_event_t;
 
 /**
  ******************************************************************************
  * @brief      启动预充线程。
- * @retval     None
+ * @retval     0:已创建线程。
  * @details    在板级初始化和参数加载完成后调用一次。
  ******************************************************************************
  */
-void precharge_start(void);
+int precharge_start_task(void);
 
 /**
  ******************************************************************************
@@ -72,36 +58,47 @@ void precharge_start(void);
  * @retval     -EAGAIN:预充线程尚未就绪。
  ******************************************************************************
  */
-int precharge_begin(void);
+int precharge_request_start(void);
 
 /**
  ******************************************************************************
  * @brief      请求停止，允许重复调用，由预充线程撤销输出。
  * @retval     None
- * @details    在线程上下文调用，返回表示请求已提交，执行结果通过快照获取。
+ * @details    在线程上下文调用，返回表示请求已提交，撤销失败通过事件交付。
  ******************************************************************************
  */
-void precharge_stop(void);
+void precharge_request_stop(void);
+
+/**
+ ******************************************************************************
+ * @brief      请求预充线程清除故障和待上报故障事件。
+ * @retval     None
+ * @details    在线程上下文调用。已清除的故障可由检测流程重新确认。
+ ******************************************************************************
+ */
+void precharge_request_clear_faults(void);
 
 /**
  ******************************************************************************
  * @brief      通知预充模块主控旁路已确认吸合。
+ * @param[in]  completion_id:完成事件的本地标识。
  * @retval     0:确认已受理，由预充线程释放输出。
  * @retval     -EINVAL:当前未等待接管，或已有停止请求。
  * @retval     -EAGAIN:预充线程尚未就绪。
  * @retval     -ETIMEDOUT:接管确认超过时限。
  ******************************************************************************
  */
-int precharge_confirm(void);
+int precharge_confirm_handover(uint32_t completion_id);
 
 /**
  ******************************************************************************
- * @brief      复制最近一次预充事务和四路漏电测量。
- * @param[out] report:快照输出地址。
- * @retval     0:读取成功。
+ * @brief      领取待发送事件。
+ * @param[out] event:事件输出地址。
+ * @retval     1:已复制事件。
+ * @retval     0:暂无事件。
  * @retval     -EINVAL:输出地址为空。
  ******************************************************************************
  */
-int precharge_get_report(precharge_report_t *report);
+int precharge_take_event(precharge_event_t *event);
 
 #endif /* BRINGUP_PRECHARGE_H_ */

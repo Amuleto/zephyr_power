@@ -3,3 +3,13 @@ mainmenu "Board bring-up"
 rsource "Kconfig.serial_rx"
 
 source "Kconfig.zephyr"
+
+config APP_LEAKAGE_LIMIT_DECI_MA
+    int "Leakage threshold in 0.1 mA (0 disables)"
+    default 0
+    range 0 2147483647
+
+config APP_LEAKAGE_DURATION_MS
+    int "Continuous leakage duration in ms (0 disables)"
+    default 0
+    range 0 2147483647

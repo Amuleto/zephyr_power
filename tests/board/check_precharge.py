@@ -22,7 +22,7 @@ def main():
     assert all(item.controller is gpio_b and item.data["flags"] == 0 for item in relays)
     assert [item.data["pin"] for item in relays] == [6, 5, 4, 3]
     direction = user.props["rs485-de-gpios"].val[0]
-    assert direction.controller is gpio_b and direction.data == {"pin": 8, "flags": 0}
+    assert direction.controller is gpio_b and direction.data == {"pin": 12, "flags": 0}
     assert direction.data["pin"] != led.data["pin"], "RS485 direction conflicts with LED"
     inputs = user.props["io-channels"].val
     assert [item.data["input"] for item in inputs] == list(range(9))
@@ -32,10 +32,17 @@ def main():
         assert node.props["zephyr,resolution"].val == 12
     for name in ("usart0", "usart2", "uart4"):
         node = edt.label2node[name]
-        assert node.status == "okay" and node.props["current-speed"].val == 115200
+        assert node.status == "okay"
+        if name == "usart2":
+            assert node.props["current-speed"].val == 9600
+            assert node.props["parity"].val == "even"
+            assert node.props["data-bits"].val == 8
+            assert node.props["stop-bits"].val == "1"
+        else:
+            assert node.props["current-speed"].val == 115200
     assert edt.chosen_nodes["zephyr,console"] is edt.label2node["uart4"]
     assert edt.chosen_nodes["zephyr,shell-uart"] is edt.label2node["uart4"]
-    print("PASS: PB7 LED, PB8 direction, four relays, nine ADC inputs and three UARTs")
+    print("PASS: PB7 LED, PB12 direction, four relays, nine ADC inputs and three UARTs")
 
 
 if __name__ == "__main__":

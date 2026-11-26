@@ -6,7 +6,7 @@
 
 当前设备树将指示灯配置在 PB7，高电平亮。
 
-按用户要求，选择原理图未连接、当前软件未占用的 PB8 作为 RS485 收发方向。实板必须将方向控制线连接或改接到 PB8。软件配置不能替代这项接线；尚未核实 PCB 实际铜线和焊接状态。
+实板确认 PB12 为 RS485 收发方向控制脚。
 
 ## 引脚表
 
@@ -14,8 +14,8 @@
 | --- | --- | --- |
 | 调试日志和 Shell | UART4 TX PC12、RX PD2 | 115200，8N1，沿用已验证配置 |
 | 产线串口 J14 | USART0 TX PA9、RX PA10 | 115200，8N1，仅初始化驱动，无产线协议 |
-| RS485 串口 | USART2 TX PB10、RX PB11 | 115200，8N1，仅初始化驱动，无 Modbus/上传协议 |
-| RS485 DE 与 /RE | PB8 | 高发送、低接收，默认低；需实际接线 |
+| RS485 串口 | USART2 TX PB10、RX PB11 | 9600，8E1，主控与预充板通信 |
+| RS485 DE 与 /RE | PB12 | 高发送、低接收，默认低 |
 | CAN0 | PA11 RX、PA12 TX | 经典 CAN，默认 500 kbit/s，通过 UART4 Shell 调试 |
 | 实板指示灯 | PB7 | 高电平亮 |
 | JDQ1 | PB6 | 高电平有效，初始化为低 |
@@ -29,7 +29,7 @@
 | ISO_+3V 监测 | PB0 | ADC0 通道 8，是被测信号而非 ADC 参考引脚 |
 | SWD | PA13、PA14 | 保留，JTAG 禁用，不占用 SWD |
 
-115200 是新增两个串口的开发默认值，原理图本身不定义通信速率；对接设备前需统一速率、校验和协议。
+USART2 按主控通信协议配置为 9600、8E1。USART0 和 UART4 使用 115200、8N1。
 
 ## 文件分工
 
@@ -61,7 +61,7 @@ board adc
 
 ## 输出与通信范围
 
-继电器初始化为断开，RS485 初始化为接收。在 UART4 Shell 中用 `gpio <3-6> <0|1>` 设置继电器控制引脚。PB3～PB6 的高电平会直接吸合对应继电器，Shell 命令绕过预充时序和互锁。PB7 由应用每约 500 ms 切换一次，PB8 由 RS485 线程控制。
+继电器初始化为断开，RS485 初始化为接收。在 UART4 Shell 中用 `gpio <3-6> <0|1>` 设置继电器控制引脚。PB3～PB6 的高电平会直接吸合对应继电器，Shell 命令绕过预充时序和互锁。PB7 由应用每约 500 ms 切换一次，PB12 由 RS485 线程控制。
 
 应用用 `app_board_gpio_write(BOARD_GPIO_OUT_JDQ1, true)` 吸合 JDQ1，预充时序和互锁由调用方负责。`app_board_gpio_write(BOARD_GPIO_OUT_RS485_DE, true)` 将 RS485 切到发送，调用方须等待 UART 最后一位停止位发完再切回接收。
 
@@ -71,7 +71,7 @@ board adc
 
 本次 `west build` 联合编译通过。MCUboot Flash 为 29,176 B，应用 Flash 为 77,980 B、RAM 为 11,968 B，均未超出已有分区。签名验证和 Flash 分区边界检查通过。
 
-设备树检查覆盖 PB7 指示灯、PB8 方向口、4 路继电器映射顺序、9 路 ADC 通道和 3 个 UART 的启用状态。工作区根目录可执行：
+设备树检查覆盖 PB7 指示灯、PB12 方向口、4 路继电器映射顺序、9 路 ADC 通道和 3 个 UART 的启用状态。工作区根目录可执行：
 
 ```powershell
 python firmware/tests/board/check_precharge.py build/bringup_gd32f303rc_mcuboot/bringup
@@ -87,5 +87,5 @@ python firmware/tests/storage/check_layout.py build/bringup_gd32f303rc_mcuboot
 1. UART4 Shell 和 PB7 LED 工作正常，DAP-Link 仍能通过 SWD 连接。
 2. 继电器输出保持低，核对 PB3/PB4 已释放，测量复位及 bootloader 阶段输出波形。
 3. 用已知低压输入检查 PA0～PA7、PB0 的原始读数和通道顺序，确认采样与名义 VDDA 的误差。
-4. 完成 PB8 方向线接线后，用匹配串口参数验证 USART2 通信和收发切换。
+4. 核对 PB12 方向控制后，用匹配串口参数验证 USART2 通信和收发切换。
 5. USART0 需另接产线设备测试，不能将“驱动 ready”视为协议已经通过。

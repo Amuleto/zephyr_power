@@ -38,7 +38,7 @@
 
 USART0 和 USART2 各有 512 字节 RX 环形缓冲。`serial stats` 查看两路状态，`serial read factory` 读取产线串口。RS485 线程独占 USART2 和 PB8。
 
-RS485 保留 115200、8N1 接收，主板协议待定。双 ADC 连续扫描，使用 UART4 的 `adc` 查询 MCU 引脚电压。自动检测时序待定，继电器可通过 UART4 的 `gpio` 命令调试。MP10 测量和上电自检状态由预充线程维护。
+RS485 使用 9600、8E1，预充板发起心跳并根据主控应答校准 RTC。双 ADC 连续扫描，使用 UART4 的 `adc` 查询 MCU 引脚电压。自动检测时序待定，继电器可通过 UART4 的 `gpio` 命令调试。MP10 测量和上电自检状态由预充线程维护。
 
 ## Shell 与日志
 

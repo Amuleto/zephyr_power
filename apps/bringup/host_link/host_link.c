@@ -5,7 +5,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/printk.h>
 
+#include "app_clock.h"
 #include "board_watchdog.h"
 #include "host_link.h"
 #include "host_protocol.h"
@@ -19,10 +21,16 @@
 #define HOST_LINK_PRIORITY 5
 /** 联调期间发送主动上报前的接收空闲时间，单位为毫秒。 */
 #define HOST_LINK_RX_IDLE_MS 5u
+/** 心跳请求周期，单位为毫秒。 */
+#define HOST_LINK_HEARTBEAT_MS 3000u
+/** 心跳应答占用总线的联调窗口，单位为毫秒。 */
+#define HOST_LINK_HEARTBEAT_REPLY_MS 100u
 /** RS485 线程进度上报的超时，单位为毫秒。 */
 #define HOST_LINK_WATCHDOG_TIMEOUT_MS 3000u
 /** 上报重发间隔，单位为毫秒，联调值。 */
-#define HOST_LINK_RETRY_MS 250u
+#define HOST_LINK_FAULT_RETRY_MS 250u
+/** 预充完成上报重发间隔，单位为毫秒。 */
+#define HOST_LINK_DONE_RETRY_MS 500u
 /** 普通故障上报的最大发送尝试数，联调值。 */
 #define HOST_LINK_FAULT_ATTEMPTS 3u
 typedef enum
@@ -34,7 +42,7 @@ typedef enum
 
 typedef enum
 {
-    HOST_LINK_HEARTBEAT = 2, /**< 主控心跳。 */
+    HOST_LINK_HEARTBEAT = 2, /**< 预充板发起的心跳。 */
     HOST_LINK_CONTROL = 3,   /**< 启动或停止。 */
     HOST_LINK_REPORT = 4,    /**< 预充板主动上报。 */
 } host_link_type_e;
@@ -46,6 +54,7 @@ typedef struct
     uint8_t event;          /**< 预充完成或故障。 */
     uint8_t cause;          /**< 故障原因，仅故障事件携带。 */
     uint8_t channel_mask;   /**< 故障通道位图，是否携带由原因决定。 */
+    uint8_t currents[2u * PRECHARGE_CHANNEL_COUNT]; /**< 超限通道电流，小端。 */
 } host_link_report_data_t;
 
 /** 预充板发送缓冲区，Data 容量按已实现的最大载荷配置。 */
@@ -59,9 +68,9 @@ typedef struct
 typedef struct
 {
     host_protocol_parser_t parser; /**< 当前串口字节流的解析状态。 */
+    int64_t heartbeat_at_ms; /**< 下次心跳发送时刻。 */
+    int64_t heartbeat_reply_by_ms; /**< 当前心跳应答的截止时间。 */
     uint32_t precharge_id; /**< 已处理快照的内部事务编号，不在线协议中传输。 */
-    precharge_status_e status;      /**< 已处理的预充状态。 */
-    precharge_cause_e cause;        /**< 已处理的故障原因。 */
     host_link_event_e event;        /**< 当前等待确认的上报类型。 */
     uint16_t sequence;              /**< 上报序号，重发时保持一致。 */
     host_link_report_data_t report; /**< 待重发的上报 Data。 */
@@ -75,6 +84,25 @@ LOG_MODULE_REGISTER(host_link, LOG_LEVEL_WRN);
 
 static K_THREAD_STACK_DEFINE(host_link_stack, HOST_LINK_STACK_SIZE);
 static struct k_thread host_link_thread;
+
+/**
+ ******************************************************************************
+ * @brief      将完整 RS485 帧以十六进制输出到调试串口。
+ * @param[in]  direction:以预充板为视角的收发方向。
+ * @param[in]  bytes:整帧原始字节。
+ * @param[in]  length:整帧长度。
+ * @retval     None
+ ******************************************************************************
+ */
+static void trace_frame(const char *direction, const uint8_t *bytes, size_t length)
+{
+    printk("RS485 %s:", direction);
+    for (size_t i = 0; i < length; i++)
+    {
+        printk(" %02X", (unsigned int)bytes[i]);
+    }
+    printk("\n");
+}
 
 /**
  ******************************************************************************
@@ -109,6 +137,10 @@ static int send_frame(host_link_type_e type, uint8_t command, const void *data, 
     if (err)
     {
         LOG_ERR("RS485 TX failed: %d", err);
+    }
+    else
+    {
+        trace_frame("TX", (const uint8_t *)&frame, (size_t)size);
     }
     return err;
 }
@@ -145,7 +177,7 @@ static uint8_t control_result(int error)
  */
 static void handle_start(host_link_session_t *session, const uint8_t *data)
 {
-    uint8_t result = control_result(precharge_begin());
+    uint8_t result = control_result(precharge_request_start());
 
     ARG_UNUSED(session);
     ARG_UNUSED(data);
@@ -166,23 +198,53 @@ static void handle_stop(host_link_session_t *session, const uint8_t *data)
 
     ARG_UNUSED(session);
     ARG_UNUSED(data);
-    precharge_stop();
+    precharge_request_stop();
     send_frame(HOST_LINK_CONTROL, 2u, &result, sizeof(result));
 }
 
 /**
  ******************************************************************************
- * @brief      接收主控心跳并返回空载荷应答。
- * @param[in,out] session:通信线程状态，当前未使用。
- * @param[in]  data:主控时间戳，目前仅受理，不执行对时。
+ * @brief      受理主控清除故障指令，停止旧故障报文的重发。
+ * @param[in,out] session:通信线程持有的状态。
+ * @param[in]  data:空载荷，未使用。
+ * @retval     None
+ ******************************************************************************
+ */
+static void handle_clear_faults(host_link_session_t *session, const uint8_t *data)
+{
+    const uint8_t result = 0;
+
+    ARG_UNUSED(data);
+    precharge_request_clear_faults();
+    if (session->event == HOST_LINK_FAULT)
+    {
+        session->event = HOST_LINK_NO_EVENT;
+    }
+    send_frame(HOST_LINK_CONTROL, 3u, &result, sizeof(result));
+}
+
+/**
+ ******************************************************************************
+ * @brief      使用本次心跳应答中的 UTC 秒数校准本地 RTC。
+ * @param[in,out] session:通信线程的心跳状态。
+ * @param[in]  data:四字节小端 UTC Unix 秒数。
  * @retval     None
  ******************************************************************************
  */
 static void handle_heartbeat(host_link_session_t *session, const uint8_t *data)
 {
-    ARG_UNUSED(data);
-    ARG_UNUSED(session);
-    send_frame(HOST_LINK_HEARTBEAT, 1u, NULL, 0);
+    if (k_uptime_get() >= session->heartbeat_reply_by_ms)
+    {
+        return;
+    }
+    session->heartbeat_reply_by_ms = 0;
+
+    int result = app_clock_sync(sys_get_le32(data));
+
+    if (result < 0)
+    {
+        LOG_WRN("Heartbeat RTC sync failed: %d", result);
+    }
 }
 
 /**
@@ -202,7 +264,7 @@ static void handle_report_ack(host_link_session_t *session, const uint8_t *data)
     }
     if (session->event == HOST_LINK_PRECHARGE_DONE)
     {
-        int err = precharge_confirm();
+        int err = precharge_confirm_handover(session->precharge_id);
 
         if (err)
         {
@@ -227,6 +289,7 @@ typedef struct
 static const host_link_command_t commands[] = {
     {HOST_LINK_CONTROL, 1u, 0u, handle_start},
     {HOST_LINK_CONTROL, 2u, 0u, handle_stop},
+    {HOST_LINK_CONTROL, 3u, 0u, handle_clear_faults},
     {HOST_LINK_HEARTBEAT, 1u, sizeof(uint32_t), handle_heartbeat},
     {HOST_LINK_REPORT, 1u, sizeof(uint16_t), handle_report_ack},
 };
@@ -274,28 +337,53 @@ static void handle_frame(host_link_session_t *session)
  */
 static void update_report(host_link_session_t *session)
 {
-    precharge_report_t report;
+    precharge_event_t report;
 
-    if (precharge_get_report(&report))
+    if (session->event == HOST_LINK_FAULT || precharge_take_event(&report) != 1)
     {
         return;
     }
-    if (report.id == session->precharge_id && report.status == session->status
-        && report.cause == session->cause)
+    if (report.type == PRECHARGE_EVENT_CANCEL)
     {
+        if (session->event == HOST_LINK_PRECHARGE_DONE && session->precharge_id == report.id)
+        {
+            session->event = HOST_LINK_NO_EVENT;
+        }
         return;
     }
-
-    session->precharge_id = report.id;
-    session->status = report.status;
-    session->cause = report.cause;
-    session->event = HOST_LINK_NO_EVENT;
-    if (report.status == PRECHARGE_WAIT_HANDOVER)
+    if (report.type == PRECHARGE_EVENT_DONE)
     {
+        session->precharge_id = report.id;
         session->event = HOST_LINK_PRECHARGE_DONE;
         session->report_size = offsetof(host_link_report_data_t, cause);
     }
-    else if (report.status == PRECHARGE_FAILED)
+    else if (report.type == PRECHARGE_EVENT_MP10_FAULT)
+    {
+        session->event = HOST_LINK_FAULT;
+        session->report.cause = 0x03u;
+        session->report.channel_mask = report.channels;
+        session->report_size = offsetof(host_link_report_data_t, currents);
+    }
+    else if (report.type == PRECHARGE_EVENT_LEAKAGE)
+    {
+        size_t length = 0;
+
+        session->event = HOST_LINK_FAULT;
+        session->report.cause = 0x04u;
+        session->report.channel_mask = report.channels;
+        for (unsigned int i = 0; i < PRECHARGE_CHANNEL_COUNT; i++)
+        {
+            if (report.channels & BIT(i))
+            {
+                int32_t current = CLAMP(report.current[i], INT16_MIN, INT16_MAX);
+
+                sys_put_le16((uint16_t)current, &session->report.currents[length]);
+                length += sizeof(uint16_t);
+            }
+        }
+        session->report_size = offsetof(host_link_report_data_t, currents) + length;
+    }
+    else
     {
         session->event = HOST_LINK_FAULT;
         session->report.cause = (uint8_t)report.cause;
@@ -303,23 +391,14 @@ static void update_report(host_link_session_t *session)
         {
             case PRECHARGE_CAUSE_INPUT:
             case PRECHARGE_CAUSE_VOLTAGE:
-                session->report.channel_mask = report.failed_channels;
-                session->report_size = sizeof(session->report);
-                break;
-            case PRECHARGE_CAUSE_ADC:
-            case PRECHARGE_CAUSE_GPIO:
-            case PRECHARGE_CAUSE_RELEASE:
-                session->report.channel_mask = 0u;
-                session->report_size = sizeof(session->report);
+                session->report.channel_mask = report.channels;
+                session->report_size = offsetof(host_link_report_data_t, currents);
                 break;
             default:
+                session->report.cause = 0x05u;
                 session->report_size = offsetof(host_link_report_data_t, channel_mask);
                 break;
         }
-    }
-    else
-    {
-        return;
     }
 
     session->sequence++;
@@ -340,6 +419,7 @@ static void update_report(host_link_session_t *session)
 static void send_report(host_link_session_t *session)
 {
     int64_t now_ms = k_uptime_get();
+    uint32_t retry_ms = HOST_LINK_FAULT_RETRY_MS;
 
     if (session->event == HOST_LINK_NO_EVENT || now_ms < session->retry_at_ms)
     {
@@ -358,7 +438,11 @@ static void send_report(host_link_session_t *session)
         session->sent = true;
     }
     session->attempts++;
-    session->retry_at_ms = k_uptime_get() + HOST_LINK_RETRY_MS;
+    if (session->event == HOST_LINK_PRECHARGE_DONE)
+    {
+        retry_ms = HOST_LINK_DONE_RETRY_MS;
+    }
+    session->retry_at_ms = k_uptime_get() + retry_ms;
 }
 
 /**
@@ -405,6 +489,8 @@ static void host_link_entry(void *arg1, void *arg2, void *arg3)
             {
                 do
                 {
+                    trace_frame("RX", (const uint8_t *)&session.parser.frame,
+                                sys_get_be16(session.parser.frame.header.length_be));
                     handle_frame(&session);
                 } while (host_protocol_next(&session.parser));
             }
@@ -414,7 +500,24 @@ static void host_link_entry(void *arg1, void *arg2, void *arg3)
             host_protocol_expire(&session.parser, k_uptime_get());
             if (!session.parser.used || session.parser.ready)
             {
-                send_report(&session);
+                int64_t now_ms = k_uptime_get();
+
+                if (now_ms >= session.heartbeat_reply_by_ms)
+                {
+                    if (now_ms >= session.heartbeat_at_ms)
+                    {
+                        session.heartbeat_at_ms = now_ms + HOST_LINK_HEARTBEAT_MS;
+                        if (!send_frame(HOST_LINK_HEARTBEAT, 1u, NULL, 0))
+                        {
+                            session.heartbeat_reply_by_ms =
+                                k_uptime_get() + HOST_LINK_HEARTBEAT_REPLY_MS;
+                        }
+                    }
+                    else
+                    {
+                        send_report(&session);
+                    }
+                }
             }
         }
 
@@ -436,4 +539,5 @@ void host_link_start(void)
 {
     k_thread_create(&host_link_thread, host_link_stack, K_THREAD_STACK_SIZEOF(host_link_stack),
                     host_link_entry, NULL, NULL, NULL, HOST_LINK_PRIORITY, 0, K_NO_WAIT);
+    k_thread_name_set(&host_link_thread, "host_link");
 }

@@ -7,6 +7,8 @@
 
 /** 四台 MP10 的逻辑通道数量。 */
 #define MP10_CHANNEL_COUNT 4u
+/** 测量和连续采样的超时间隔，单位为毫秒。 */
+#define MP10_TIMEOUT_MS 100u
 
 typedef enum
 {
@@ -55,7 +57,6 @@ typedef struct
     int64_t request_ms;              /**< 提交自检的时间，单位为毫秒。 */
     int64_t reply_ms;                /**< 自检应答的接收时间，单位为毫秒。 */
     uint8_t reply;                   /**< 自检应答首字节，零表示尚未收到。 */
-    int64_t next_measurement_log_ms; /**< 四路测量共用的下次日志时间，单位为毫秒。 */
 } mp10_context_t;
 
 /**
@@ -72,7 +73,7 @@ int mp10_init(void);
  * @brief      更新四路测量、在线状态和上电自检。
  * @param[in,out] task:初始化为零的线程私有状态。
  * @retval     None
- * @details    由预充线程周期调用，每轮最多处理八条 CAN 回调事件；四路测量共用每秒一条日志限流。
+ * @details    由预充线程周期调用，每轮最多处理八条 CAN 回调事件。
  ******************************************************************************
  */
 void mp10_task(mp10_context_t *task);
